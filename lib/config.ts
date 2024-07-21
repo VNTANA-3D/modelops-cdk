@@ -10,44 +10,72 @@ export const ConfigProps = z.object({
   account: z.string().optional().describe("AWS Account Id"),
   region: z.string().default("us-east-1").describe("AWS Region"),
   // ECR
-  repository: z
+  repositoryArn: z
     .string()
     .default(
-      "709825985650.dkr.ecr.us-east-1.amazonaws.com/vntana/modelops-handler",
+      "arn:aws:ecr:us-east-1:709825985650:repository/vntana-modelops-handler",
     ),
   tag: z.string().default("1.0.0"),
-  // VPC
-  vpcId: z.string().nullable().default(null).describe("Custom VPC Id"),
+  // Flags
   useDefaultVpc: z
     .boolean()
+    .optional()
     .default(false)
     .describe("Flag to use `default` VPC flag"),
+  useSpotInstances: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Flag to use spot instances."),
+  // VPC
+  vpcId: z.string().nullable().default(null).describe("Custom VPC Id"),
+  subnetIds: z
+    .array(z.string())
+    .optional()
+    .nullable()
+    .default(null)
+    .describe(
+      "List of Subnet Ids to use. All the subnets in the VPC will be used if unset",
+    ),
   // S3
   s3BucketName: z
     .string()
     .nullable()
+    .optional()
     .default(null)
     .describe("Stack managed S3 Bucket."),
-  // ECS
-  ecsClusterArn: z
-    .string()
-    .nullable()
-    .default(null)
-    .describe("External ECS Cluster ARN"),
-  ecsMemoryLimitMiB: z
+  // Job
+  jobMemory: z
     .number()
-    .default(512)
-    .describe("ECS container memory limit in MiB"),
-  ecsCpu: z.number().default(256).describe("ECS container cpu"),
+    .optional()
+    .default(1)
+    .describe("The number of GB of memory for the Job."),
+  jobCpu: z
+    .number()
+    .optional()
+    .default(1)
+    .describe("The number of vCPU for the Job."),
+  jobRetryAttempts: z
+    .number()
+    .optional()
+    .default(1)
+    .describe("The number of times to retry a Job"),
+  jobEphemeralStorage: z
+    .number()
+    .optional()
+    .default(30)
+    .describe("The size for ephemeral storage."),
   /// Log Group
   logGroupName: z
     .string()
+    .optional()
     .nullable()
     .default(null)
     .describe("Custom Log Group name"),
   logGroupStreamPrefix: z
     .string()
-    .default("ecs")
+    .optional()
+    .default("job")
     .describe("Custom Log Group stream prefix"),
 });
 
@@ -68,19 +96,29 @@ export function getConfig(customDotEnvPath: string = "") {
     account: process.env.AWS_ACCOUNT_ID,
     region: process.env.AWS_REGION,
     /// ECR
-    repository: process.env.ECR_IMAGE_REPOSITORY,
-    tag: process.env.ECR_IMAGE_TAG,
+    repositoryArn: process.env.UNSAFE_ECR_IMAGE_REPOSITORY_ARN,
+    tag: process.env.UNSAFE_ECR_IMAGE_TAG,
+    /// Flags
+    useDefaultVpc: process.env.USE_DEFAULT_VPC === "true",
+    useSpotInstances: process.env.USE_SPOT_INSTANCES === "true",
     /// VPC
     vpcId: process.env.VPC_ID,
-    useDefaultVpc: process.env.USE_DEFAULT_VPC === "true",
+    subnetIds: process.env.SUBNET_IDS
+      ? process.env.SUBNET_IDS.split(",")
+      : undefined,
     /// S3
     s3BucketName: process.env.S3_BUCKET_NAME,
-    /// ECS
-    ecsClusterArn: process.env.ECS_CLUSTER_ARN,
-    ecsMemoryLimitMiB: process.env.ECS_MEMORY_LIMIT_MIB
-      ? parseInt(process.env.ECS_MEMORY_LIMIT_MIB, 10)
+    /// Job
+    jobMemory: process.env.JOB_MEMORY
+      ? parseInt(process.env.JOB_MEMORY, 10)
       : undefined,
-    ecsCpu: process.env.ECS_CPU ? parseInt(process.env.ECS_CPU, 10) : undefined,
+    jobCpu: process.env.JOB_CPU ? parseInt(process.env.JOB_CPU, 10) : undefined,
+    jobEphemeralStorage: process.env.JOB_EPHEMERAL_STORAGE
+      ? parseInt(process.env.JOB_EPHEMERAL_STORAGE, 10)
+      : undefined,
+    jobobRetryAttempts: process.env.ECS_JOB_RETRY_ATTEMPTS
+      ? parseInt(process.env.ECS_JOB_RETRY_ATTEMPTS, 10)
+      : undefined,
     /// Log Group
     logGroupName: process.env.LOG_GROUP_NAME,
     logGroupStreamPrefix: process.env.LOG_GROUP_STREAM_PREFIX,

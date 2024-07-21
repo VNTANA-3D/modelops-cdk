@@ -30,50 +30,56 @@ export class ModelopsOnAwsStack extends cdk.Stack {
 
   private init() {
     const vpc = this.getVpc();
+    const subnetIds = this.getSubnetIds(vpc);
     const s3Bucket = this.getS3Bucket();
 
-    const ecsCluster = this.getEcsCluster(vpc);
     const securityGroup = this.getSecurityGroup(vpc);
-    const ecsTaskExecutionRole = this.getEcsTaskExecutionRole();
+    const repository = this.getEcrRepository();
+    const ecsTaskExecutionRole = this.getEcsTaskExecutionRole(repository);
     const ecsTaskRole = this.getEcsTaskRole(s3Bucket);
-    const logGroup = this.getLogGroup();
-    const containerImage = this.getContainerImage();
-    const taskDefinition = this.getTaskDefinition(
+    const batchServiceRole = this.getBatchServiceRole();
+
+    const fargateComputeEnvironment = this.getFargateComputeEnvironment(
+      vpc,
+      subnetIds,
+      securityGroup,
+      batchServiceRole,
+    );
+    const jobQueue = this.getJobQueue(fargateComputeEnvironment);
+    const container = this.getContainer(
+      repository,
       ecsTaskExecutionRole,
       ecsTaskRole,
     );
-    const container = this.getContainer(
-      containerImage,
-      taskDefinition,
-      logGroup,
+    const jobDefinition = this.getJobDefinition(
+      container,
+      jobQueue,
+      batchServiceRole,
     );
 
     new cdk.CfnOutput(this, this.#name + "SecurityGroupId", {
       value: securityGroup.securityGroupId,
     });
-    new cdk.CfnOutput(this, this.#name + "EcsClusterName", {
-      value: ecsCluster.clusterName,
-    });
-    new cdk.CfnOutput(this, this.#name + "EcsClusterArn", {
-      value: ecsCluster.clusterArn,
-    });
+
     new cdk.CfnOutput(this, this.#name + "EcsTaskRoleArn", {
       value: ecsTaskRole.roleArn,
     });
     new cdk.CfnOutput(this, this.#name + "EcsTaskExecutionRoleArn", {
       value: ecsTaskExecutionRole.roleArn,
     });
-    new cdk.CfnOutput(this, this.#name + "EcsContainerName", {
-      value: container.containerName,
+
+    new cdk.CfnOutput(this, this.#name + "JobQueueArn", {
+      value: jobQueue.jobQueueArn,
     });
-    new cdk.CfnOutput(this, this.#name + "EcsContainerImageName", {
-      value: container.imageName,
+    new cdk.CfnOutput(this, this.#name + "JobQueueName", {
+      value: jobQueue.jobQueueName,
     });
-    new cdk.CfnOutput(this, this.#name + "EcsTaskDefinitionArn", {
-      value: taskDefinition.taskDefinitionArn,
+
+    new cdk.CfnOutput(this, this.#name + "JobDefinitionArn", {
+      value: jobDefinition.jobDefinitionArn,
     });
-    new cdk.CfnOutput(this, this.#name + "EcsTaskDefinitionFamily", {
-      value: taskDefinition.family,
+    new cdk.CfnOutput(this, this.#name + "JobDefinitionName", {
+      value: jobDefinition.jobDefinitionName,
     });
 
     if (s3Bucket) {
@@ -96,6 +102,16 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     });
   }
 
+  private getSubnetIds(vpc: cdk.aws_ec2.IVpc) {
+    let subnets = [...vpc.publicSubnets, ...vpc.privateSubnets];
+
+    if (this.#config.subnetIds) {
+      return subnets.filter((subnetId) => subnets.includes(subnetId));
+    }
+
+    return subnets;
+  }
+
   private getS3Bucket() {
     if (this.#config.s3BucketName === null) return null;
 
@@ -104,15 +120,7 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     });
   }
 
-  private getEcsCluster(vpc: cdk.aws_ec2.IVpc) {
-    const id = this.#name + "EcsCluster";
-
-    return this.#config.ecsClusterArn
-      ? cdk.aws_ecs.Cluster.fromClusterArn(this, id, this.#config.ecsClusterArn)
-      : new cdk.aws_ecs.Cluster(this, id, { vpc });
-  }
-
-  private getEcsTaskExecutionRole() {
+  private getEcsTaskExecutionRole(repository: cdk.aws_ecr.IRepository) {
     const taskExecutionRole = new cdk.aws_iam.Role(
       this,
       this.#name + "EcsTaskExecutionRole",
@@ -129,14 +137,14 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     taskExecutionRole.addToPolicy(
       new cdk.aws_iam.PolicyStatement({
         actions: [
-          "ecr:GetAuthorizationToken",
           "ecr:BatchCheckLayerAvailability",
+          "ecr:CompleteLayerUpload",
           "ecr:GetDownloadUrlForLayer",
-          "ecr:BatchGetImage",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
+          "ecr:InitiateLayerUpload",
+          "ecr:PutImage",
+          "ecr:UploadLayerPart",
         ],
-        resources: ["*"],
+        resources: [repository.repositoryArn],
       }),
     );
 
@@ -168,6 +176,64 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     }
 
     return taskRole;
+  }
+
+  private getBatchServiceRole() {
+    const name = this.#name + "BatchServiceRole";
+    const batchServiceRole = new cdk.aws_iam.Role(this, name, {
+      assumedBy: new cdk.aws_iam.ServicePrincipal("batch.amazonaws.com"),
+      managedPolicies: [
+        cdk.aws_iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "service-role/AWSBatchServiceRole",
+        ),
+      ],
+    });
+
+    batchServiceRole.addToPolicy(
+      new cdk.aws_iam.PolicyStatement({
+        actions: [
+          "batch:SubmitJob",
+          "batch:DescribeComputeEnvironments",
+          "batch:DescribeJobDefinitions",
+          "batch:DescribeJobQueues",
+          "batch:DescribeJobs",
+          "batch:ListJobs",
+          "batch:TerminateJob",
+          "ecs:CreateCluster",
+          "ecs:DescribeClusters",
+          "ecs:DescribeContainerInstances",
+          "ecs:DescribeTasks",
+          "ecs:ListClusters",
+          "ecs:ListContainerInstances",
+          "ecs:ListTasks",
+          "ecs:RunTask",
+          "ecs:StartTask",
+          "ecs:StopTask",
+          "ecs:UpdateContainerInstancesState",
+          "ecs:RegisterTaskDefinition",
+          "application-autoscaling:DeleteScalingPolicy",
+          "application-autoscaling:DeregisterScalableTarget",
+          "application-autoscaling:DescribeScalableTargets",
+          "application-autoscaling:DescribeScalingActivities",
+          "application-autoscaling:DescribeScalingPolicies",
+          "application-autoscaling:PutScalingPolicy",
+          "application-autoscaling:RegisterScalableTarget",
+          "elasticloadbalancing:DeregisterInstancesFromLoadBalancer",
+          "elasticloadbalancing:DeregisterTargets",
+          "elasticloadbalancing:DescribeLoadBalancers",
+          "elasticloadbalancing:DescribeTargetGroups",
+          "elasticloadbalancing:RegisterInstancesWithLoadBalancer",
+          "elasticloadbalancing:RegisterTargets",
+          "cloudwatch:PutMetricAlarm",
+          "cloudwatch:DescribeAlarms",
+          "cloudwatch:DeleteAlarms",
+          "iam:PassRole",
+        ],
+        resources: ["*"],
+      }),
+    );
+
+    return batchServiceRole;
   }
 
   private getLogGroup() {
@@ -214,38 +280,102 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     return sg;
   }
 
-  private getContainerImage() {
-    return cdk.aws_ecs.ContainerImage.fromRegistry(this.#config.repository);
+  private getEcrRepository() {
+    return cdk.aws_ecr.Repository.fromRepositoryArn(
+      this,
+      this.#name + "Repository",
+      this.#config.repositoryArn,
+    );
   }
 
-  private getTaskDefinition(
-    executionRole: cdk.aws_iam.Role,
-    taskRole: cdk.aws_iam.Role,
+  private getFargateComputeEnvironment(
+    vpc: cdk.aws_ec2.IVpc,
+    subnets: cdk.aws_ec2.ISubnet[],
+    securityGroup: cdk.aws_ec2.SecurityGroup,
+    serviceRole: cdk.aws_iam.Role,
   ) {
-    return new cdk.aws_ecs.FargateTaskDefinition(
+    const name = this.#name + "FargateComputeEnvironment";
+
+    return new cdk.aws_batch.FargateComputeEnvironment(this, name, {
+      vpc,
+      computeEnvironmentName: name,
+      enabled: true,
+      securityGroups: [securityGroup],
+      serviceRole,
+      spot: !!this.#config.useSpotInstances,
+      vpcSubnets: {
+        subnets,
+      },
+    });
+  }
+
+  private getJobQueue(
+    fargateComputeEnvironment: cdk.aws_batch.FargateComputeEnvironment,
+  ) {
+    const jobQueueName = this.#name + "JobQueue";
+    return new cdk.aws_batch.JobQueue(this, jobQueueName, {
+      computeEnvironments: [
+        {
+          computeEnvironment: fargateComputeEnvironment,
+          order: 1,
+        },
+      ],
+      enabled: true,
+      jobQueueName,
+      priority: 10,
+    });
+  }
+
+  private getContainer(
+    repository: cdk.aws_ecr.IRepository,
+    executionRole: cdk.aws_iam.Role,
+    jobRole: cdk.aws_iam.Role,
+  ) {
+    return new cdk.aws_batch.EcsFargateContainerDefinition(
       this,
-      this.#name + "TaskDefinition",
+      this.#name + "EcsFargateContainerDefinition",
       {
+        cpu: this.#config.jobCpu,
+        image: cdk.aws_ecs.ContainerImage.fromEcrRepository(repository),
+        memory: cdk.Size.gibibytes(this.#config.jobMemory),
+        assignPublicIp: false,
+        command: ["${{Entrypoint}}"],
+        ephemeralStorageSize: cdk.Size.gibibytes(
+          this.#config.jobEphemeralStorage,
+        ),
         executionRole,
-        taskRole,
+        jobRole,
+        logging: cdk.aws_ecs.LogDriver.awsLogs({
+          streamPrefix: this.#config.logGroupStreamPrefix,
+          mode: cdk.aws_ecs.AwsLogDriverMode.NON_BLOCKING,
+          logRetention: cdk.aws_logs.RetentionDays.ONE_MONTH,
+        }),
       },
     );
   }
 
-  private getContainer(
-    image: cdk.aws_ecs.RepositoryImage,
-    taskDefinition: cdk.aws_ecs.FargateTaskDefinition,
-    logGroup: cdk.aws_logs.LogGroup,
+  private getJobDefinition(
+    container: cdk.aws_batch.IEcsContainerDefinition,
+    jobQueue: cdk.aws_batch.JobQueue,
+    serviceRole: cdk.aws_iam.Role,
   ) {
-    return new cdk.aws_ecs.ContainerDefinition(this, this.#name + "Container", {
-      image,
-      taskDefinition,
-      logging: cdk.aws_ecs.LogDrivers.awsLogs({
-        logGroup,
-        streamPrefix: this.#config.logGroupStreamPrefix,
-      }),
-      memoryLimitMiB: this.#config.ecsMemoryLimitMiB,
-      cpu: this.#config.ecsCpu,
-    });
+    const jobDefinitionName = this.#name + "JobDefinition";
+    const jobDefinition = new cdk.aws_batch.EcsJobDefinition(
+      this,
+      jobDefinitionName,
+      {
+        container,
+        parameters: {
+          Entrypoint: "/home/app/apps/handler/dist/index.js",
+        },
+        jobDefinitionName,
+        propagateTags: true,
+        retryAttempts: this.#config.jobRetryAttempts,
+      },
+    );
+
+    jobDefinition.grantSubmitJob(serviceRole, jobQueue);
+
+    return jobDefinition;
   }
 }
