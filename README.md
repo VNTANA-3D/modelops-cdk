@@ -22,25 +22,47 @@ MODELOPS_CONFIG="./dev.env" npx cdk deploy
 
 Use this table for a list of all the exposed configuration options:
 
-| Name                      | Default                 | Description                                  |
-| ------------------------- | ----------------------- | -------------------------------------------- |
-| `STACK_NAME`              | `VntanaModelOpsHandler` | Stack name.                                  |
-| `AWS_ACCOUNT`             | `null`                  | AWS Account ID                               |
-| `AWS_REGION`              | `us-east-1`             | AWS Region.                                  |
-| `USE_DEFAULT_VPC`         | `false`                 | Flag to use the `default` VPC.               |
-| `VPC_ID`                  | `null`                  | Custom VPC Id (overrides `USE_DEFAULT_VPC`.) |
-| `S3_BUCKET_NAME`          | `null`                  | Stack managed S3 Bucket name.                |
-| `ECS_CLUSTER_ARN`         | `null`                  | External ECS cluster ARN.                    |
-| `ECS_MEMORY_LIMIT_MIB`    | `512`                   | ECS container memory limit in MiB.           |
-| `ECS_CPU`                 | `256`                   | ECS container cpu.                           |
-| `LOG_GROUP_NAME`          | `null`                  | Custom Log Group name.                       |
-| `LOG_GROUP_STREAM_PREFIX` | `ecs`                   | Custom Log Group stream prefix.              |
+| Name                      | Default                 | Description                                                                  |
+| ------------------------- | ----------------------- | ---------------------------------------------------------------------------- |
+| `STACK_NAME`              | `VntanaModelOpsHandler` | Stack name.                                                                  |
+| `AWS_ACCOUNT_ID`          | `null`                  | AWS Account ID                                                               |
+| `AWS_REGION`              | `us-east-1`             | AWS Region.                                                                  |
+| `USE_DEFAULT_VPC`         | `false`                 | Flag to use the `default` VPC.                                               |
+| `USE_SPOT_INSTANCES`      | `false`                 | Flag to enable spot instances.                                               |
+| `VPC_ID`                  | `null`                  | Custom VPC Id (overrides `USE_DEFAULT_VPC`.)                                 |
+| `SUBNET_IDS`              | `null`                  | List of Subnet Ids to use. All the subnets in the VPC will be used if unset. |
+| `S3_BUCKET_NAME`          | `null`                  | Stack managed S3 Bucket name.                                                |
+| `JOB_MEMORY`              | `1`                     | The number of GB of memory for the Job.                                      |
+| `JOB_CPU`                 | `1`                     | The number of vCPU for the Job.                                              |
+| `JOB_EPHEMERAL_STORAGE`   | `30`                    | The size for ephemeral storage.                                              |
+| `JOB_RETRY_ATTEMPTS`      | `1`                     | The number of times to retry a job.                                          |
+| `LOG_GROUP_NAME`          | `null`                  | Custom Log Group name.                                                       |
+| `LOG_GROUP_STREAM_PREFIX` | `job`                   | Custom Log Group stream prefix.                                              |
 
 > **NOTE:** We recommend that you handle your own S3 buckets outside of this CDK stack, and instead update the `ecsTaskRole` role definition to have read and/or write access to them.
 
 These variables are also available, though we advise that you don't modify them unless you know what you are doing.
 
-| `Name`                 | `Description`                           |
-| ---------------------- | --------------------------------------- |
-| `ECR_IMAGE_REPOSITORY` | VNTANA ECR Marketplace image repository |
-| `ECR_IMAGE_TAG`        | VNTANA ECR Marketplace image tag        |
+| `Name`                            | `Description`                                |
+| --------------------------------- | -------------------------------------------- |
+| `UNSAFE_ECR_IMAGE_REPOSITORY_ARN` | VNTANA ECR Marketplace image repository Arn. |
+| `UNSAFE_ECR_IMAGE_TAG`            | VNTANA ECR Marketplace image tag.            |
+
+## Manually run a Job
+
+```bash
+export STACK_NAME="$(cat .env | grep STACK_NAME | awk -F= '{print $2}' | tr -d '"')"
+export JOB_QUEUE="${STACK_NAME}JobQueue"
+export JOB_DEFINITION="${STACK_NAME}JobDefinition"
+export JOB_DEFINITION_REVISION="$(aws batch describe-job-definitions --job-definition-name "$JOB_DEFINITION" --query 'reverse(sort_by(jobDefinitions, &revision))[0].revision' --output text)"
+
+JOB_ID="$(aws batch submit-job \
+  --job-name "modelops-handler-request" \
+  --job-queue "$JOB_QUEUE" \
+  --job-definition "$JOB_DEFINITION:$JOB_DEFINITION_REVISION" \
+  --query 'jobId' \
+  --output text \
+  --container-overrides '{
+  "command": ["/home/app/apps/handler/dist/index.js", "--help"]
+}')"
+```
