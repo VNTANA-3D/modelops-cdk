@@ -28,12 +28,18 @@ export const ConfigProps = z.object({
     .default(false)
     .describe("Flag to use spot instances."),
   // VPC
-  vpcId: z.string().nullable().default(null).describe("Custom VPC Id"),
+  vpcId: z
+    .string()
+    .nullable()
+    .default(null)
+    .transform((val) => (val === "" ? null : val))
+    .describe("Custom VPC Id"),
   subnetIds: z
     .array(z.string())
     .optional()
     .nullable()
     .default(null)
+    .transform((val) => (!val || val.length == 0 ? null : val))
     .describe(
       "List of Subnet Ids to use. All the subnets in the VPC will be used if unset",
     ),
@@ -43,6 +49,7 @@ export const ConfigProps = z.object({
     .nullable()
     .optional()
     .default(null)
+    .transform((val) => (val === "" ? null : val))
     .describe("Stack managed S3 Bucket."),
   // Job
   jobMemory: z
@@ -65,12 +72,20 @@ export const ConfigProps = z.object({
     .optional()
     .default(30)
     .describe("The size for ephemeral storage."),
+  jobPolicyFile: z
+    .string()
+    .optional()
+    .nullable()
+    .default(null)
+    .transform((val) => (val === "" ? null : val))
+    .describe("A path to an IAM policy document to attach to the Job Role."),
   /// Log Group
   logGroupName: z
     .string()
     .optional()
     .nullable()
     .default(null)
+    .transform((val) => (val === "" ? null : val))
     .describe("Custom Log Group name"),
   logGroupStreamPrefix: z
     .string()
@@ -119,6 +134,7 @@ export function getConfig(customDotEnvPath: string = "") {
     jobobRetryAttempts: process.env.ECS_JOB_RETRY_ATTEMPTS
       ? parseInt(process.env.ECS_JOB_RETRY_ATTEMPTS, 10)
       : undefined,
+    jobPolicyFile: process.env.JOB_POLICY_FILE,
     /// Log Group
     logGroupName: process.env.LOG_GROUP_NAME,
     logGroupStreamPrefix: process.env.LOG_GROUP_STREAM_PREFIX,

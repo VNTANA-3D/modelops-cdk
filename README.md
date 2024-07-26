@@ -36,6 +36,7 @@ Use this table for a list of all the exposed configuration options:
 | `JOB_CPU`                 | `1`                     | The number of vCPU for the Job.                                              |
 | `JOB_EPHEMERAL_STORAGE`   | `30`                    | The size for ephemeral storage.                                              |
 | `JOB_RETRY_ATTEMPTS`      | `1`                     | The number of times to retry a job.                                          |
+| `JOB_POLICY_FILE`         | `null`                  | A path to an IAM policy document to attach to the Job Role.                  |
 | `LOG_GROUP_NAME`          | `null`                  | Custom Log Group name.                                                       |
 | `LOG_GROUP_STREAM_PREFIX` | `job`                   | Custom Log Group stream prefix.                                              |
 

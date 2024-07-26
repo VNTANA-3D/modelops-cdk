@@ -1,8 +1,10 @@
+import { existsSync, readFileSync } from "fs";
 import * as cdk from "aws-cdk-lib";
 import type { StackProps } from "aws-cdk-lib";
 import { Construct } from "constructs";
 
 import type { ConfigPropsT } from "./config";
+import { PolicyDocument } from "./validators";
 
 const HTTPS = 443;
 const HTTP = 80;
@@ -35,8 +37,8 @@ export class ModelopsOnAwsStack extends cdk.Stack {
 
     const securityGroup = this.getSecurityGroup(vpc);
     const repository = this.getEcrRepository();
-    const ecsTaskExecutionRole = this.getEcsTaskExecutionRole(repository);
-    const ecsTaskRole = this.getEcsTaskRole(s3Bucket);
+    const ecsTaskExecutionRole = this.getJobExecutionRole(repository);
+    const ecsTaskRole = this.getJobRole(s3Bucket);
     const batchServiceRole = this.getBatchServiceRole();
 
     const fargateComputeEnvironment = this.getFargateComputeEnvironment(
@@ -61,10 +63,10 @@ export class ModelopsOnAwsStack extends cdk.Stack {
       value: securityGroup.securityGroupId,
     });
 
-    new cdk.CfnOutput(this, this.#name + "EcsTaskRoleArn", {
+    new cdk.CfnOutput(this, this.#name + "JobRoleArn", {
       value: ecsTaskRole.roleArn,
     });
-    new cdk.CfnOutput(this, this.#name + "EcsTaskExecutionRoleArn", {
+    new cdk.CfnOutput(this, this.#name + "JobExecutionRoleArn", {
       value: ecsTaskExecutionRole.roleArn,
     });
 
@@ -82,7 +84,7 @@ export class ModelopsOnAwsStack extends cdk.Stack {
       value: jobDefinition.jobDefinitionName,
     });
 
-    if (s3Bucket) {
+    if (s3Bucket !== null) {
       new cdk.CfnOutput(this, this.#name + "S3BucketName", {
         value: s3Bucket.bucketName,
       });
@@ -120,10 +122,10 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     });
   }
 
-  private getEcsTaskExecutionRole(repository: cdk.aws_ecr.IRepository) {
+  private getJobExecutionRole(repository: cdk.aws_ecr.IRepository) {
     const taskExecutionRole = new cdk.aws_iam.Role(
       this,
-      this.#name + "EcsTaskExecutionRole",
+      this.#name + "JobExecutionRole",
       {
         assumedBy: new cdk.aws_iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
         managedPolicies: [
@@ -151,12 +153,12 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     return taskExecutionRole;
   }
 
-  private getEcsTaskRole(s3Bucket: cdk.aws_s3.Bucket | null) {
-    const taskRole = new cdk.aws_iam.Role(this, this.#name + "EcsTaskRole", {
+  private getJobRole(s3Bucket: cdk.aws_s3.Bucket | null) {
+    const jobRole = new cdk.aws_iam.Role(this, this.#name + "JobRole", {
       assumedBy: new cdk.aws_iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
     });
 
-    taskRole.addToPolicy(
+    jobRole.addToPolicy(
       new cdk.aws_iam.PolicyStatement({
         actions: [
           "aws-marketplace:RegisterUsage",
@@ -167,7 +169,7 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     );
 
     if (s3Bucket) {
-      taskRole.addToPolicy(
+      jobRole.addToPolicy(
         new cdk.aws_iam.PolicyStatement({
           actions: ["s3:*"],
           resources: [s3Bucket.bucketArn, `${s3Bucket.bucketArn}/*`],
@@ -175,7 +177,25 @@ export class ModelopsOnAwsStack extends cdk.Stack {
       );
     }
 
-    return taskRole;
+    if (this.#config.jobPolicyFile && existsSync(this.#config.jobPolicyFile)) {
+      const policyDocument = PolicyDocument.parse(
+        JSON.parse(readFileSync(this.#config.jobPolicyFile, "utf-8")),
+      );
+
+      for (const statement of policyDocument.Statement) {
+        jobRole.addToPolicy(
+          new cdk.aws_iam.PolicyStatement({
+            actions: Array.isArray(statement.Action)
+              ? statement.Action
+              : [statement.Action],
+            resources: Array.isArray(statement.Resource)
+              ? statement.Resource
+              : [statement.Resource],
+          }),
+        );
+      }
+    }
+    return jobRole;
   }
 
   private getBatchServiceRole() {
@@ -234,15 +254,6 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     );
 
     return batchServiceRole;
-  }
-
-  private getLogGroup() {
-    const id = this.#name + "LogGroup";
-    return new cdk.aws_logs.LogGroup(this, id, {
-      logGroupName: this.#config.logGroupName || id,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      retention: cdk.aws_logs.RetentionDays.ONE_MONTH,
-    });
   }
 
   private getSecurityGroup(vpc: cdk.aws_ec2.IVpc) {
@@ -336,7 +347,10 @@ export class ModelopsOnAwsStack extends cdk.Stack {
       this.#name + "EcsFargateContainerDefinition",
       {
         cpu: this.#config.jobCpu,
-        image: cdk.aws_ecs.ContainerImage.fromEcrRepository(repository),
+        image: cdk.aws_ecs.ContainerImage.fromEcrRepository(
+          repository,
+          this.#config.tag,
+        ),
         memory: cdk.Size.gibibytes(this.#config.jobMemory),
         assignPublicIp: false,
         command: ["${{Entrypoint}}"],
