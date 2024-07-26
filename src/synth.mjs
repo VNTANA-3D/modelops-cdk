@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { resolve } from "path";
 import { Command } from "commander";
 import { z } from "zod";

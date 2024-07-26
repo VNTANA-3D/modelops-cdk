@@ -10,22 +10,22 @@ export class Shell {
 
   async spawn(command, ...args) {
     return new Promise((res, rej) => {
-      const cdkProcess = spawn(command, [...args], {
+      const proc = spawn(command, [...args], {
         cwd: resolve("."),
         stdio: "inherit",
         shell: true,
         env: { ...this.#env, ...process.env },
       });
 
-      cdkProcess.on("close", (code) => {
+      proc.on("close", (code) => {
         if (code !== 0) {
-          rej(new Error(`cdk process exited with code ${code}`));
+          rej(new Error(`${command} process exited with code ${code}`));
         }
         res();
       });
 
-      cdkProcess.on("error", (err) => {
-        console.error("Failed to start cdk synth process.");
+      proc.on("error", (err) => {
+        console.error(`error:`, err);
         rej(err);
       });
     });

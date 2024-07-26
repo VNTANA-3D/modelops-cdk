@@ -1,0 +1,13 @@
+---
+name: Hello World
+description: Basic pipeline example
+state:
+  name: World
+tasks:
+  - name: Greeting
+    module: Shell
+    props:
+      command: echo
+      args:
+        - -n
+        - "Hello {{ name }}!!!"

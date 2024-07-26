@@ -55,12 +55,11 @@ These variables are also available, though we advise that you don't modify them 
 export STACK_NAME="$(cat .env | grep STACK_NAME | awk -F= '{print $2}' | tr -d '"')"
 export JOB_QUEUE="${STACK_NAME}JobQueue"
 export JOB_DEFINITION="${STACK_NAME}JobDefinition"
-export JOB_DEFINITION_REVISION="$(aws batch describe-job-definitions --job-definition-name "$JOB_DEFINITION" --query 'reverse(sort_by(jobDefinitions, &revision))[0].revision' --output text)"
 
 JOB_ID="$(aws batch submit-job \
   --job-name "modelops-handler-request" \
   --job-queue "$JOB_QUEUE" \
-  --job-definition "$JOB_DEFINITION:$JOB_DEFINITION_REVISION" \
+  --job-definition "$JOB_DEFINITION" \
   --query 'jobId' \
   --output text \
   --container-overrides '{
