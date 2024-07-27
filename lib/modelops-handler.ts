@@ -34,6 +34,7 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     const vpc = this.getVpc();
     const subnetIds = this.getSubnetIds(vpc);
     const s3Bucket = this.getS3Bucket();
+    const logGroup = this.getLogGroup();
 
     const securityGroup = this.getSecurityGroup(vpc);
     const repository = this.getEcrRepository();
@@ -52,6 +53,7 @@ export class ModelopsOnAwsStack extends cdk.Stack {
       repository,
       ecsTaskExecutionRole,
       ecsTaskRole,
+      logGroup,
     );
     const jobDefinition = this.getJobDefinition(
       container,
@@ -84,6 +86,13 @@ export class ModelopsOnAwsStack extends cdk.Stack {
       value: jobDefinition.jobDefinitionName,
     });
 
+    new cdk.CfnOutput(this, this.#name + "LogGroupArn", {
+      value: logGroup.logGroupArn,
+    });
+    new cdk.CfnOutput(this, this.#name + "LogGroupName", {
+      value: logGroup.logGroupName,
+    });
+
     if (s3Bucket !== null) {
       new cdk.CfnOutput(this, this.#name + "S3BucketName", {
         value: s3Bucket.bucketName,
@@ -92,6 +101,15 @@ export class ModelopsOnAwsStack extends cdk.Stack {
         value: s3Bucket.bucketArn,
       });
     }
+  }
+
+  private getLogGroup() {
+    const logGroupName = this.#name + "LogGroup";
+    return new cdk.aws_logs.LogGroup(this, logGroupName, {
+      logGroupName: "/custom/log/group",
+      retention: cdk.aws_logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
   }
 
   private getVpc() {
@@ -341,6 +359,7 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     repository: cdk.aws_ecr.IRepository,
     executionRole: cdk.aws_iam.Role,
     jobRole: cdk.aws_iam.Role,
+    logGroup: cdk.aws_logs.LogGroup,
   ) {
     return new cdk.aws_batch.EcsFargateContainerDefinition(
       this,
@@ -362,7 +381,7 @@ export class ModelopsOnAwsStack extends cdk.Stack {
         logging: cdk.aws_ecs.LogDriver.awsLogs({
           streamPrefix: this.#config.logGroupStreamPrefix,
           mode: cdk.aws_ecs.AwsLogDriverMode.NON_BLOCKING,
-          logRetention: cdk.aws_logs.RetentionDays.ONE_MONTH,
+          logGroup,
         }),
       },
     );
