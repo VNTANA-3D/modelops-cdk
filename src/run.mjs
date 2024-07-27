@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { dirname, resolve } from "path";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import * as YAML from "yaml";
 import { z } from "zod";
 
@@ -89,14 +89,26 @@ program
     "ModelopsHandlerDev",
   )
   .option(
-    "--dry-run",
-    "Print the Pipeline to be deployed to `stdout` instead of executing it.",
-    false,
-  )
-  .option(
     "--print",
     "Print the Pipeline to `stdout` before executing the pipeline.",
     false,
+  )
+  .option("--debug", "Enable the ModelOps handle debug mode.", false)
+  .addOption(
+    new Option(
+      "--dry-run",
+      "Print the Pipeline to be deployed to `stdout` instead of executing it.",
+    ).implies({ print: true, dryRun: true }),
+  )
+  .addOption(
+    new Option("-f, --format <FORMAT>", "Type of Logger to use")
+      .choices(["json", "yaml"])
+      .preset("yaml"),
+  )
+  .addOption(
+    new Option("-l, --logger <LOGGER>", "Type of Logger to use")
+      .choices(["color", "json", "stdout"])
+      .preset("stdout"),
   )
   .action(async (pipeline, state, options) => {
     let path = resolve(
@@ -133,11 +145,27 @@ program
       "/bin/bash",
       "-c",
       [
-        `cat <<-'${pseudoRandomEOF}' | /home/app/apps/handler/dist/index.js --debug -i json`,
+        `cat <<-'${pseudoRandomEOF}' | /home/app/apps/handler/dist/index.js -i json --logger ${options.logger} ${options.debug ? "--debug" : ""}`,
         `${JSON.stringify(definition)}`,
         `${pseudoRandomEOF}`,
       ].join("\n"),
     ];
+
+    if (options.print) {
+      switch (options.format) {
+        case "json":
+          console.log(JSON.stringify(definition));
+          break;
+        default:
+          console.log(YAML.stringify(definition));
+      }
+    }
+
+    console.log(options);
+
+    if (options.dryRun) {
+      return;
+    }
 
     await $.spawn(
       "aws",
