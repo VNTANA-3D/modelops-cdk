@@ -1,0 +1,26 @@
+---
+name: S3 Download
+description: Downloads an asset from S3
+state:
+  src: /assets/your_asset.glb
+  dest: /home/workspace/your_asset.glb
+tasks:
+  - name: Download Asset
+    module: S3
+    props:
+      src: "{{ src }}"
+      dest: "{{ dest }}"
+      bucket: development.modelops.vntana.com
+      action: download
+    register: download
+  - name: Ls
+    module: Shell
+    props:
+      command: ls
+      args:
+        - -alh
+  - name: Debug download output
+    module: Debug
+    props:
+      var: download
+      format: yaml

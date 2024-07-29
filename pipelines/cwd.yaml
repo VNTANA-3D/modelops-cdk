@@ -1,0 +1,21 @@
+---
+name: Current Working Directory
+description: Debug the handler current working directory
+state: {}
+tasks:
+  - name: PWD
+    module: Shell
+    props:
+      command: pwd
+  - name: Ls
+    module: Shell
+    props:
+      command: ls
+      args:
+        - -alh
+  - name: Df
+    module: Shell
+    props:
+      command: df
+      args:
+        - -h

@@ -1,0 +1,16 @@
+---
+name: Curl
+description: Downloads an asset through `curl`
+state:
+  link: https://api.vntana.com/assets/products/7b59e9e6-0de2-4df7-97e0-f90abcd29595/organizations/vntana-tech-test-02/clients/vntana-marketing/5d2b1998-dcc6-43c2-bfe4-a082df9cae4a.glb
+tasks:
+  - name: Download Asset
+    module: Curl
+    props:
+      src: "{{ link }}"
+      dest: "/home/workspace/asset"
+      config:
+        request: GET
+        verbose: true
+        location: true
+        silent: true

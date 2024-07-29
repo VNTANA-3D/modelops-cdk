@@ -103,12 +103,12 @@ program
   .addOption(
     new Option("-f, --format <FORMAT>", "Type of Logger to use")
       .choices(["json", "yaml"])
-      .preset("yaml"),
+      .default("yaml"),
   )
   .addOption(
     new Option("-l, --logger <LOGGER>", "Type of Logger to use")
       .choices(["color", "json", "stdout"])
-      .preset("stdout"),
+      .default("stdout"),
   )
   .action(async (pipeline, state, options) => {
     let path = resolve(
@@ -160,8 +160,6 @@ program
           console.log(YAML.stringify(definition));
       }
     }
-
-    console.log(options);
 
     if (options.dryRun) {
       return;

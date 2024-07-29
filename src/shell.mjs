@@ -8,6 +8,12 @@ export class Shell {
     this.#env = { ...envs };
   }
 
+  /**
+   * Spawn a command.
+   * @param {string} command
+   * @param {...string} Command arguments, options, and flags.
+   * @returns {Promise<void>}
+   */
   async spawn(command, ...args) {
     return new Promise((res, rej) => {
       const proc = spawn(command, [...args], {
@@ -22,6 +28,47 @@ export class Shell {
           rej(new Error(`${command} process exited with code ${code}`));
         }
         res();
+      });
+
+      proc.on("error", (err) => {
+        console.error(`error:`, err);
+        rej(err);
+      });
+    });
+  }
+
+  /**
+   * Run a command and return the output.
+   * @param {string} command
+   * @param {...string} Command arguments, options, and flags.
+   * @returns {Promise<string>} The output of the command.
+   */
+  async run(command, ...args) {
+    return new Promise((res, rej) => {
+      const proc = spawn(command, [...args], {
+        cwd: resolve("."),
+        stdio: ["pipe", "pipe", "pipe"],
+        shell: true,
+        env: { ...this.#env, ...process.env },
+      });
+
+      let stdout = "";
+      let stderr = "";
+
+      proc.stdout.on("data", (data) => {
+        stdout += data.toString();
+      });
+
+      proc.stderr.on("data", (data) => {
+        stderr += data.toString();
+      });
+
+      proc.on("close", (code) => {
+        if (code !== 0) {
+          rej(stderr);
+        } else {
+          res(stdout);
+        }
       });
 
       proc.on("error", (err) => {

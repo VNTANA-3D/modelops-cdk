@@ -66,3 +66,20 @@ JOB_ID="$(aws batch submit-job \
   "command": ["/home/app/apps/handler/dist/index.js", "--help"]
 }')"
 ```
+
+## Run a Job with the CLI
+
+```bash
+export JOB_ID="$(m run other 'name="tt_remote_wow_flexi_drafter"' 'bucket="development.modelops.vntana.com"' --debug)"
+index=0
+while true; do
+  index=$((index + 1))
+  STATUS="$(m describe-job "$JOB_ID" | jq -r '.status')"
+  echo -ne "\r\033[K"
+  echo -ne $STATUS
+  for i in $(seq 1 $index); do echo -ne "."; done
+  sleep 3
+  if [[ "$STATUS" == "RUNNING" ]]; then echo; break; fi
+done;
+m get-logs "$JOB_ID"
+```
