@@ -22,7 +22,9 @@
   "dependencies": {
     "aws-cdk-lib": "2.149.0",
     "commander": "^12.1.0",
+    "console-table-printer": "^2.12.1",
     "constructs": "^10.0.0",
+    "dayjs": "^1.11.12",
     "dedent": "^1.5.3",
     "dotenv": "^16.4.5",
     "source-map-support": "^0.5.21",

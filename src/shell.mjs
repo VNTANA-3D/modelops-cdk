@@ -45,6 +45,7 @@ export class Shell {
    */
   async run(command, ...args) {
     return new Promise((res, rej) => {
+      console.log(`Running: ${command} ${args.join(" ")}`);
       const proc = spawn(command, [...args], {
         cwd: resolve("."),
         stdio: ["pipe", "pipe", "pipe"],
