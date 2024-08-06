@@ -2,6 +2,7 @@
 name: S3 Download
 description: Downloads an asset from S3
 state:
+  bucket: YOUR_BUCKET
   src: /assets/your_asset.glb
   dest: /home/workspace/your_asset.glb
 tasks:
@@ -10,7 +11,7 @@ tasks:
     props:
       src: "{{ src }}"
       dest: "{{ dest }}"
-      bucket: development.modelops.vntana.com
+      bucket: "{{ bucket }}"
       action: download
     register: download
   - name: Ls
