@@ -1,53 +1,15 @@
 import { Command } from "commander";
 
 import { Shell } from "./shell.mjs";
-import { Jobs, Logs } from "./validators.mjs";
+import { Logs } from "./validators.mjs";
+import { describeJob } from "./describeJob.mjs";
 
 export const program = new Command();
 
-/**
- * @typedef {Object} Container
- * @property {string} logStreamName
- */
-
-/**
- * @typedef {Object} Job
- * @property {string} status
- * @property {Container} container
- */
-
-/**
- * Get the details for a Job.
- * @param {string} jobId - The Job unique identifier
- * @returns {Promise<Job>} The Job details.
- */
-async function getJob(jobId) {
-  const $ = new Shell();
-  let job = null;
-
-  try {
-    job = Jobs.parse(
-      JSON.parse(
-        await $.run(
-          "aws",
-          "batch",
-          "describe-jobs",
-          ...["--jobs", jobId, "--output", "json"],
-        ),
-      ),
-    ).jobs[0];
-  } catch (err) {
-    console.error(err);
-    process.exit(1);
-  }
-
-  return job;
-}
-
-async function action(jobId) {
+export async function action(jobId) {
   const $ = new Shell();
 
-  const { status, container } = await getJob(jobId);
+  const { status, container } = await describeJob(jobId);
 
   if (!container) {
     console.error("Job container not found");
@@ -86,7 +48,7 @@ async function action(jobId) {
       nextForwardToken = logs.nextForwardToken;
 
       if (logs.events.length === 0) {
-        let { status } = await getJob(jobId);
+        let { status } = await describeJob(jobId);
 
         if (status != "RUNNING" && status != "STARTING") {
           break;
@@ -105,5 +67,5 @@ async function action(jobId) {
 
 program
   .description("Gets the details for a Job.")
-  .argument("JOB_ID", "The Job unique identifier")
+  .argument("[JOB_ID]", "The Job unique identifier", process.env.JOB_ID)
   .action(action);

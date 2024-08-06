@@ -7,6 +7,8 @@ import { z } from "zod";
 import { fileURLToPath } from "url";
 
 import { Shell } from "./shell.mjs";
+import { describeJob } from "./describeJob.mjs";
+import { action } from "./getLogs.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -15,6 +17,15 @@ const camelToSnakeCase = (str) =>
   str.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`).slice(1);
 
 const Pair = z.tuple([z.string(), z.any()]);
+
+/**
+ * Sleeps for a given amount of time.
+ * @param {number} ms - The amount of time to sleep in milliseconds.
+ * @returns {Promise<void>}
+ */
+async function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function splitString(input) {
   const result = [];
@@ -72,8 +83,15 @@ program
 
       return pairs.reduce((acc, pair) => {
         const [k, v] = Pair.parse(pair.split("="));
+        let value;
 
-        return { ...acc, [k]: JSON.parse(v) };
+        try {
+          value = JSON.parse(v);
+        } catch {
+          value = v;
+        }
+
+        return { ...acc, [k]: value };
       }, prev);
     },
     {},
@@ -94,6 +112,11 @@ program
     false,
   )
   .option("--debug", "Enable the ModelOps handle debug mode.", false)
+  .option(
+    "--watch",
+    "Watch for Job changes until it succeeds or fails, printing the execution logs.",
+    false,
+  )
   .addOption(
     new Option(
       "--dry-run",
@@ -165,7 +188,7 @@ program
       return;
     }
 
-    await $.spawn(
+    const jobId = await $.run(
       "aws",
       "batch",
       "submit-job",
@@ -184,4 +207,32 @@ program
         `'{"command": ${JSON.stringify(command)}}'`,
       ],
     );
+
+    process.stdout.write(jobId + "\n");
+
+    if (options.watch) {
+      while (true) {
+        const job = await describeJob(jobId);
+
+        if (
+          job.status === "RUNNING" ||
+          job.status === "SUCCEEDED" ||
+          job.status === "FAILED"
+        ) {
+          process.stderr.write(
+            `\n\nJob status: ${job.status}\n\nGetting logs...\n\n`,
+          );
+          await sleep(5000);
+          break;
+        }
+
+        process.stderr.write(".");
+
+        await sleep(3000);
+      }
+
+      process.stderr.write("\n");
+
+      await action(jobId);
+    }
   });

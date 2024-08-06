@@ -25,7 +25,7 @@ platform
   .addCommand(permalink.program.name("permalink"));
 
 program
-  .name("modelops-cdk")
+  .name("modelops")
   .description(
     "Wrapper around CDK to deploy VNTNA's ModelOps Handler project in your infrastructure",
   )
