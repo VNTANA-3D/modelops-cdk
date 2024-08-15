@@ -1,15 +1,15 @@
 import { Command } from "commander";
 
-import { Shell } from "./shell.mjs";
-import { Logs } from "./validators.mjs";
-import { describeJob } from "./describeJob.mjs";
+import { Shell } from "../lib/shell.mjs";
+import { Logs } from "../lib/validators.mjs";
+import { describe } from "./describe.mjs";
 
 export const program = new Command();
 
-export async function action(jobId) {
+export async function logs(jobId) {
   const $ = new Shell();
 
-  const { status, container } = await describeJob(jobId);
+  const { status, container } = await describe(jobId);
 
   if (!container) {
     console.error("Job container not found");
@@ -48,7 +48,7 @@ export async function action(jobId) {
       nextForwardToken = logs.nextForwardToken;
 
       if (logs.events.length === 0) {
-        let { status } = await describeJob(jobId);
+        let { status } = await describe(jobId);
 
         if (status != "RUNNING" && status != "STARTING") {
           break;
@@ -68,4 +68,4 @@ export async function action(jobId) {
 program
   .description("Gets the details for a Job.")
   .argument("[JOB_ID]", "The Job unique identifier", process.env.JOB_ID)
-  .action(action);
+  .action(logs);

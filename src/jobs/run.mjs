@@ -6,9 +6,9 @@ import { z } from "zod";
 
 import { fileURLToPath } from "url";
 
-import { Shell } from "./lib/shell.mjs";
-import { describe } from "./jobs/describe.mjs";
-import { action } from "./jobs/logs.mjs";
+import { Shell } from "../lib/shell.mjs";
+import { describe } from "./describe.mjs";
+import { logs } from "./logs.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -136,7 +136,7 @@ program
   .action(async (pipeline, state, options) => {
     let path = resolve(
       __dirname,
-      "../pipelines",
+      "../../pipelines",
       pipeline.endsWith(".yaml") ? pipeline : pipeline + ".yaml",
     );
 
@@ -233,6 +233,6 @@ program
 
       process.stderr.write("\n");
 
-      await action(jobId);
+      await logs(jobId);
     }
   });

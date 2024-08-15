@@ -1,7 +1,7 @@
 import { Command } from "commander";
 
-import { Shell } from "./shell.mjs";
-import { JobSummary, Jobs } from "./validators.mjs";
+import { Shell } from "../lib/shell.mjs";
+import { JobSummary, Jobs } from "../lib/validators.mjs";
 
 export const program = new Command();
 
@@ -18,7 +18,7 @@ export const program = new Command();
  * @returns {Promise<void>}
  * @throws {Error}
  */
-export async function describeJob(jobId) {
+export async function describe(jobId) {
   const $ = new Shell();
 
   return Jobs.parse(
@@ -42,7 +42,7 @@ program
   .action(async (jobId) => {
     let job = {};
     try {
-      job = describeJob(jobId);
+      job = describe(jobId);
     } catch (err) {
       console.error(err);
       process.exit(1);

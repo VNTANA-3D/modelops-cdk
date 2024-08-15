@@ -2,7 +2,7 @@ import { resolve } from "path";
 import { Command } from "commander";
 import { z } from "zod";
 
-import { Shell } from "./shell.mjs";
+import { Shell } from "./lib/shell.mjs";
 
 export const program = new Command();
 
@@ -79,7 +79,6 @@ program
     const args = [
       "--app",
       "'npx ts-node --prefer-ts-exts bin/modelops-handler.ts'",
-      "--strict",
     ];
 
     if (options.verbose) {

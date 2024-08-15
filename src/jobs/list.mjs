@@ -3,8 +3,8 @@ import * as dotenv from "dotenv";
 import { Table } from "console-table-printer";
 import dayjs from "dayjs";
 
-import { Shell } from "./shell.mjs";
-import { FromAgo, JobsSummary } from "./validators.mjs";
+import { Shell } from "../lib/shell.mjs";
+import { FromAgo, JobsSummary } from "../lib/validators.mjs";
 
 export const program = new Command();
 
