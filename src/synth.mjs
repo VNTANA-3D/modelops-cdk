@@ -54,8 +54,8 @@ program
     "Custom Log Group stream prefix.",
   )
   .option(
-    "--unsafe_ecr_image_repository <string>",
-    "[UNSAFE] Vntana ECR Marketplace image repository",
+    "--unsafe_ecr_image <string>",
+    "[UNSAFE] Vntana ECR Marketplace image",
   )
   .option(
     "--unsafe_ecr_image_tag <string>",

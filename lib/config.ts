@@ -10,12 +10,10 @@ export const ConfigProps = z.object({
   account: z.string().optional().describe("AWS Account Id"),
   region: z.string().default("us-east-1").describe("AWS Region"),
   // ECR
-  repositoryArn: z
+  image: z
     .string()
-    .default(
-      "arn:aws:ecr:us-east-1:709825985650:repository/vntana-modelops-handler",
-    ),
-  tag: z.string().default("1.0.0"),
+    .default("709825985650.dkr.ecr.us-east-1.amazonaws.com/vntana/v-86420"),
+  tag: z.string().default("20240814.1"),
   // Flags
   useDefaultVpc: z
     .boolean()
@@ -111,7 +109,7 @@ export function getConfig(customDotEnvPath: string = "") {
     account: process.env.AWS_ACCOUNT_ID,
     region: process.env.AWS_REGION,
     /// ECR
-    repositoryArn: process.env.UNSAFE_ECR_IMAGE_REPOSITORY_ARN,
+    image: process.env.UNSAFE_ECR_IMAGE,
     tag: process.env.UNSAFE_ECR_IMAGE_TAG,
     /// Flags
     useDefaultVpc: process.env.USE_DEFAULT_VPC === "true",

@@ -67,10 +67,10 @@ modelops-cdk synth
 
 These variables are also available, though it is recommended not to modify them unless necessary.
 
-| Name                              | Description                                  |
-| --------------------------------- | -------------------------------------------- |
-| `UNSAFE_ECR_IMAGE_REPOSITORY_ARN` | VNTANA ECR Marketplace image repository ARN. |
-| `UNSAFE_ECR_IMAGE_TAG`            | VNTANA ECR Marketplace image tag.            |
+| Name                   | Description                       |
+| ---------------------- | --------------------------------- |
+| `UNSAFE_ECR_IMAGE`     | VNTANA ECR Marketplace image.     |
+| `UNSAFE_ECR_IMAGE_TAG` | VNTANA ECR Marketplace image tag. |
 
 If the process is successful, you should have all the necessary resources to run your jobs.
 

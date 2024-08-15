@@ -37,8 +37,7 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     const logGroup = this.getLogGroup();
 
     const securityGroup = this.getSecurityGroup(vpc);
-    const repository = this.getEcrRepository();
-    const ecsTaskExecutionRole = this.getJobExecutionRole(repository);
+    const ecsTaskExecutionRole = this.getJobExecutionRole();
     const ecsTaskRole = this.getJobRole(s3Bucket);
     const batchServiceRole = this.getBatchServiceRole();
 
@@ -50,7 +49,6 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     );
     const jobQueue = this.getJobQueue(fargateComputeEnvironment);
     const container = this.getContainer(
-      repository,
       ecsTaskExecutionRole,
       ecsTaskRole,
       logGroup,
@@ -140,7 +138,7 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     });
   }
 
-  private getJobExecutionRole(repository: cdk.aws_ecr.IRepository) {
+  private getJobExecutionRole() {
     const taskExecutionRole = new cdk.aws_iam.Role(
       this,
       this.#name + "JobExecutionRole",
@@ -152,20 +150,6 @@ export class ModelopsOnAwsStack extends cdk.Stack {
           ),
         ],
       },
-    );
-
-    taskExecutionRole.addToPolicy(
-      new cdk.aws_iam.PolicyStatement({
-        actions: [
-          "ecr:BatchCheckLayerAvailability",
-          "ecr:CompleteLayerUpload",
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:InitiateLayerUpload",
-          "ecr:PutImage",
-          "ecr:UploadLayerPart",
-        ],
-        resources: [repository.repositoryArn],
-      }),
     );
 
     return taskExecutionRole;
@@ -309,14 +293,6 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     return sg;
   }
 
-  private getEcrRepository() {
-    return cdk.aws_ecr.Repository.fromRepositoryArn(
-      this,
-      this.#name + "Repository",
-      this.#config.repositoryArn,
-    );
-  }
-
   private getFargateComputeEnvironment(
     vpc: cdk.aws_ec2.IVpc,
     subnets: cdk.aws_ec2.ISubnet[],
@@ -356,7 +332,6 @@ export class ModelopsOnAwsStack extends cdk.Stack {
   }
 
   private getContainer(
-    repository: cdk.aws_ecr.IRepository,
     executionRole: cdk.aws_iam.Role,
     jobRole: cdk.aws_iam.Role,
     logGroup: cdk.aws_logs.LogGroup,
@@ -366,9 +341,8 @@ export class ModelopsOnAwsStack extends cdk.Stack {
       this.#name + "EcsFargateContainerDefinition",
       {
         cpu: this.#config.jobCpu,
-        image: cdk.aws_ecs.ContainerImage.fromEcrRepository(
-          repository,
-          this.#config.tag,
+        image: cdk.aws_ecs.ContainerImage.fromRegistry(
+          `${this.#config.image}:${this.#config.tag}`,
         ),
         memory: cdk.Size.gibibytes(this.#config.jobMemory),
         assignPublicIp: false,
