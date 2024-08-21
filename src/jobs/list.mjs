@@ -53,7 +53,7 @@ program
   .option(
     "-x, --stack-name <STACK_NAME>",
     "The name of the CloudFormation Stack",
-    "ModelopsHandlerDev",
+    "ModelopsHandler",
   )
   .option(
     "-f, --from <TIME_AGO>",

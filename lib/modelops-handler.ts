@@ -121,13 +121,19 @@ export class ModelopsOnAwsStack extends cdk.Stack {
   }
 
   private getSubnetIds(vpc: cdk.aws_ec2.IVpc) {
-    let subnets = [...vpc.publicSubnets, ...vpc.privateSubnets];
+    const vpcSubnets = [...vpc.privateSubnets, ...vpc.publicSubnets];
+    const subnetIds = this.#config.subnetIds || [];
 
-    if (this.#config.subnetIds) {
-      return subnets.filter((subnetId) => subnets.includes(subnetId));
+    const subnets =
+      subnetIds.length > 0
+        ? vpcSubnets.filter((subnet) => subnetIds.includes(subnet.subnetId))
+        : vpc.privateSubnets;
+
+    if (subnets.length === 0) {
+      throw new Error("No subnets found");
     }
 
-    return subnets;
+    return subnets as cdk.aws_ec2.ISubnet[];
   }
 
   private getS3Bucket() {

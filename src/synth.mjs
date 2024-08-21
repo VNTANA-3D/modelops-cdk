@@ -70,7 +70,6 @@ program
 
     for (const [key, value] of Object.entries(options)) {
       if (UNTRACKED_OPTIONS.includes(key)) continue;
-
       envs[key.toUpperCase()] = String(value);
     }
 

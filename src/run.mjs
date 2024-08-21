@@ -104,7 +104,7 @@ program
   .option(
     "s, --stack-name <STACK_NAME>",
     "Name of your CDK stack.",
-    "ModelopsHandlerDev",
+    "ModelopsHandler",
   )
   .option(
     "--print",

@@ -13,7 +13,7 @@ export const ConfigProps = z.object({
   image: z
     .string()
     .default("709825985650.dkr.ecr.us-east-1.amazonaws.com/vntana/v-86420"),
-  tag: z.string().default("20240814.1"),
+  tag: z.string().default("20240821.1"),
   // Flags
   useDefaultVpc: z
     .boolean()
