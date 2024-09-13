@@ -264,9 +264,9 @@ This command will yield an output like so:
 info: Hello Modelops!!!
 ```
 
-### Revised Text:
+### Fleshing out pipelines
 
-In this example, we demonstrate how to run one task after another:
+Each Pipeline Definition can support multiple tasks that will be executed sequentially.
 
 ```yaml
 ---
@@ -292,9 +292,9 @@ tasks:
         - -h
 ```
 
-Notice that the `state` value is not required for a successful Pipeline invocation.
+> Notice that the `state` value is not required for a successful Pipeline invocation.
 
-Most modules expose an object as their output, which can then be printed to `stdout` for debugging or consumed by a subsequent test.
+Some modules produce an `output` that can be used on subsequent tasks by storing it on a known key in the `state`. We do this through the `register` key of the Task definition, that takes on a name of a key where the output will be stored. You can then reference this output using `{{ }}` and the path to the `state` value.
 
 ```yaml
 ---
@@ -326,11 +326,13 @@ tasks:
       format: yaml
 ```
 
-### Revised Text
+### MeshOptimizer
 
-In this example, we use the `Debug` module to print the value of the stored output `download` produced by the `Download Asset` task.
+The most important Pipeline exposed by the `modelops-handler` is the `MeshOptimizer`. This modules calls the `mesh-optimization-sdk` which facilitates complex manipulation of 3D assets through a robust API.
 
-The primary module provided by the ModelOps Handler is the MeshOptimizer, which facilitates complex manipulation of 3D assets through a robust API. In the following Pipeline Definition example, we demonstrate how to combine the constructs exposed by the ModelOps Handler to create powerful orchestrations.
+In order to use the `MeshOptimizer` module, we need to get the `asset`. The `modelops-handler` exposes several modules to download the required asset. For example, you can use the `S3` module to download the original module, and to upload the processed one.
+
+In the following Pipeline Definition example, we demonstrate how to combine the constructs exposed by the `modelops-handler` to create powerful orchestrations.
 
 ```yaml
 ---
