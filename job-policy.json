@@ -13,6 +13,11 @@
         "arn:aws:s3:::development.modelops.vntana.com",
         "arn:aws:s3:::development.modelops.vntana.com/*"
       ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "sqs:SendMessage",
+      "Resource": "arn:aws:sqs:*:*:*"
     }
   ]
 }

@@ -9,3 +9,4 @@ cdk.out
 
 # Custom
 .env
+.envrc
