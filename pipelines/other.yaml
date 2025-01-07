@@ -27,7 +27,6 @@ tasks:
       src: "{{ asset.dest }}"
       dest: "{{ optimized }}"
       config:
-        output_usdz: true
         detect_instances: true
         reset_scaling: true
         pot_textures: true
@@ -35,6 +34,9 @@ tasks:
         bake_small_features: true
         skip_material_visibility: true
         target_tex_density: "{{ target_tex_density }}"
+        output_fbx: true
+        output_usdz: true
+        output_obj: true
     register: optimized
   - name: Debug download output
     module: Debug
@@ -60,5 +62,12 @@ tasks:
     props:
       src: "{{ optimized.usdDest }}"
       dest: "{{ prefix }}/{{ name }}.{{ suffix }}.usd"
+      bucket: "{{ bucket }}"
+      action: upload
+  - name: Upload Optimized OBJ
+    module: S3
+    props:
+      src: "{{ optimized.objDest }}"
+      dest: "{{ prefix }}/{{ name }}.{{ suffix }}.zip"
       bucket: "{{ bucket }}"
       action: upload
