@@ -60,7 +60,7 @@ tasks:
   - name: Upload Optimized USD
     module: S3
     props:
-      src: "{{ optimized.usdDest }}"
+      src: "{{ optimized.usdzDest }}"
       dest: "{{ prefix }}/{{ name }}.{{ suffix }}.usd"
       bucket: "{{ bucket }}"
       action: upload
