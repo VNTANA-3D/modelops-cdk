@@ -15,7 +15,7 @@ export const ConfigProps = z.object({
     .default(
       "709825985650.dkr.ecr.us-east-1.amazonaws.com/vntana/vntana-v98543",
     ),
-  tag: z.string().default("20240930.2"),
+  tag: z.string().default("20250107.1"),
   // Flags
   useDefaultVpc: z
     .boolean()
