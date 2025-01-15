@@ -127,7 +127,7 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     const subnets =
       subnetIds.length > 0
         ? vpcSubnets.filter((subnet) => subnetIds.includes(subnet.subnetId))
-        : vpc.privateSubnets;
+        : vpcSubnets;
 
     if (subnets.length === 0) {
       throw new Error("No subnets found");
