@@ -1,0 +1,16 @@
+
+> @modelops/docs@3.0.0 lint
+> eslint **/*.ts
+
+
+Oops! Something went wrong! :(
+
+ESLint: 8.21.0
+
+No files matching the pattern "**/*.ts" were found.
+Please check for typing mistakes in the pattern.
+
+npm ERR! Lifecycle script `lint` failed with error: 
+npm ERR! Error: command failed 
+npm ERR!   in workspace: @modelops/docs@3.0.0 
+npm ERR!   at location: /Users/guzmanmonne/Projects/Vntana/vntana-model-ops/branches/main/apps/docs 
