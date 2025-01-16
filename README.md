@@ -16,8 +16,29 @@ The project assumes that you are using S3 to store your assets. You can either p
 
 You can use Node.js to execute the [`./index.mjs`](./index.mjs) file located at the root of the project to run the CLI or call it directly.
 
+Use the `--help` option to get more information regarding what the tool can do:
+
 ```bash
 ./index.mjs --help
+```
+
+**Output:**
+
+```txt
+Usage: modelops [options] [command]
+
+Wrapper around CDK to deploy VNTNA's ModelOps Handler project in your infrastructure
+
+Options:
+  -V, --version               output the version number
+  -h, --help                  display help for command
+
+Commands:
+  deploy [options] [config]    Runs `cdk synthetize` and `cdk deploy` from a single command
+  destroy [options] [config]  Runs `cdk destroy` with the provided options
+  jobs                        Handle ModelOps Job.
+  platform                    VNTANA platform helper commands.
+  help [command]              display help for command
 ```
 
 To simplify, we suggest creating an alias to refer to it from any directory.
@@ -29,7 +50,7 @@ modelops --help
 
 ## Set-Up
 
-The `synth` command exposed by the CLI is all you need to deploy the necessary infrastructure.
+The `deploy` command exposed by the CLI is all you need to deploy the necessary infrastructure.
 
 > It is assumed that this command is run with a user or role with sufficient permissions to create all necessary resources.
 
@@ -55,12 +76,18 @@ This table lists all the available options:
 | `LOG_GROUP_NAME`          | `null`                  | Custom log group name.                                                   |
 | `LOG_GROUP_STREAM_PREFIX` | `job`                   | Custom log group stream prefix.                                          |
 
-> You can also override these variables through environment variables or as options when calling the `modelops-cdk synth` command.
+> You can also override these variables through environment variables or as options when calling the `modelops-cdk deploy` command.
 
-Once you are ready, run the `synth` command.
+Once you update your `.env` file with all the required configuration you are ready to deploy. If this is the first time you'll be using the AWS CDK on your account, you are going to need to bootstrap it. This can be easily done through the `deploy` command by passing the `--bootstrap` flag.
+
+> You should only need to run the `--bootstrap` command once. Either when your account hasn't been initialized to use the AWS CDK, or if you are running an older version of it.
 
 ```bash
-modelops-cdk synth
+# Deploy the infrastructure
+modelops-cdk deploy
+
+# Optionally bootstrap the infrastructure for the firs time.
+modelops-cdk deploy --bootstrap
 ```
 
 > If you create a `.env` file in the root of this repository, it will be used by default.
@@ -74,9 +101,64 @@ These variables are also available, though it is recommended not to modify them 
 
 If the process is successful, you should have all the necessary resources to run your jobs.
 
+### Use the `cdk` CLI directly
+
+If you don't feel comfortable using the provided `modelops` CLI, you can run the `cdk` cli directly. Just be sure to set the `MODELOPS_CONFIG` environment variable to point to the `.env` file you want to use.
+
+Here are the commands you would need to run.
+
+```bash
+# Set the .env file to use
+export MODELOPS_CONFIG="./env"
+
+# To synthesize the infra
+npx cdk synth --app 'npx ts-node --prefer-ts-exts bin/modelops-handler.ts'
+
+# To deploy the infra
+npx cdk deploy --app 'npx ts-node --prefer-ts-exts bin/modelops-handler.ts'
+
+# To bootstrap the account for the first time or to upgrade an older version
+npx cdk bootstrap --app 'npx ts-node --prefer-ts-exts bin/modelops-handler.ts'
+```
+
+## Run a Job with the CLI
+
+The previous example shows how you can use the AWS CLI or its SDK to schedule Jobs on this infrastructure. Still, we've included some commands exposed through the `modelops-cdk` cli to simplify the process.
+
+You can run a job with the `modelops-cdk job run` command. This command takes in the name of one of the pipelines inside the [`./pipelines/`](./pipelines/) directory or a path to a Pipeline Definition written in YAML.
+
+To run the previous example using the cli run:
+
+```bash
+modelops-cdk job run hello_world
+```
+
+You should see the `JOB_ID` printed to `stdout`. More sub-commands are available under the `modelops-cdk job` command to interact with your jobs.
+
+```bash
+# List all the running commands.
+modelops-cdk job list
+
+# Describe a Job identified by its id.
+modelops-cdk job describe "$JOB_ID"
+
+# Get the execution logs of a Job identified by its id.
+modelops-cdk job logs "$JOB_ID"
+```
+
+The `list` command takes in a `--from` options to tell the tool how far back you would like to look for jobs. It's set to `1 day` by default.
+
+Also, if you want to run a `Job` and wait until it finishes, you can run it with the `--watch` flag.
+
+```bash
+modelops-cdk job run hello_world --watch
+```
+
+You can also change the `logger` configuration to JSON if you prefer this format for your logs.
+
 ## Manually run a Pipeline
 
-You can use the `submit-job` command to submit a new job to AWS Batch to run a ModelOps Handler Pipeline. To do this, you need:
+You can use the `submit-job` command from the `awscli` to submit a new job to AWS Batch to run a ModelOps Handler Pipeline. To do this, you need:
 
 1. The name of the Job.
 2. The name of the Job Queue.
@@ -96,7 +178,7 @@ export JOB_DEFINITION="${STACK_NAME}JobDefinition"
 
 For the Pipeline definition you can either craft your own (see the next sections on this document to learn how to do it) or use one included in this repository.
 
-Lastly, the entrypoint for the ModelOps Handler is `/home/app/apps/handler/dist/index.js` and should be called with the format you are using for your Pipeline (`json` or `yaml`) and any additional verbose options you want to include. We recommend setting the `--debug` flag to get a more verbose output of what's going on during the Pipeline execution.
+Lastly, the entry point for the ModelOps Handler is `/home/app/apps/handler/dist/index.js` and should be called with the format you are using for your Pipeline (`json` or `yaml`) and any additional verbose options you want to include. We recommend setting the `--debug` flag to get a more verbose output of what's going on during the Pipeline execution.
 
 We are going to use the [`./pipelines/hello_world.yaml`](./pipelines/hello_world.yaml) Pipeline and make use of `yq` and `jq` to convert it to JSON.
 
@@ -170,41 +252,6 @@ debug: Running onEnd callbacks
 debug: Close listeners
 debug: DONE
 ```
-
-## Run a Job with the CLI
-
-The previous example shows how you can use the AWS CLI or its SDK to schedule Jobs on this infrastructure. Still, we've included some commands exposed through the `modelops-cdk` cli to simplify the process.
-
-You can run a job with the `modelops-cdk job run` command. This command takes in the name of one of the pipelines inside the [`./pipelines/`](./pipelines/) directory or a path to a Pipeline Definition written in YAML.
-
-To run the previous example using the cli run:
-
-```bash
-modelops-cdk job run hello_world
-```
-
-You should see the `JOB_ID` printed to `stdout`. More sub-commands are available under the `modelops-cdk job` command to interact with your jobs.
-
-```bash
-# List all the running commands.
-modelops-cdk job list
-
-# Describe a Job identified by its id.
-modelops-cdk job describe "$JOB_ID"
-
-# Get the execution logs of a Job identified by its id.
-modelops-cdk job logs "$JOB_ID"
-```
-
-The `list` command takes in a `--from` options to tell the tool how far back you would like to look for jobs. It's set to `1 day` by default.
-
-Also, if you want to run a `Job` and wait until it finishes, you can run it with the `--watch` flag.
-
-```bash
-modelops-cdk job run hello_world --watch
-```
-
-You can also change the `logger` configuration to JSON if you prefer this format for your logs.
 
 ## Pipelines Definition
 
@@ -326,6 +373,8 @@ tasks:
       format: yaml
 ```
 
+You can find a list of all the available `modules` and `callbacks` inside the [`./docs`](./docs) directory.
+
 ### MeshOptimizer
 
 The most important Pipeline exposed by the `modelops-handler` is the `MeshOptimizer`. This modules calls the `mesh-optimization-sdk` which facilitates complex manipulation of 3D assets through a robust API.
@@ -415,5 +464,3 @@ modelops-cdk job run other --watch --debug \
   name=tt_remote_wow_flexi_drafter \
   bucket="$S3_BUCKET"
 ```
-
-> You can download the asset used in the example here.

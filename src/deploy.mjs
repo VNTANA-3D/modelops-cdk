@@ -7,7 +7,7 @@ import { Shell } from "./lib/shell.mjs";
 export const program = new Command();
 
 program
-  .description("Runs `cdk synthetize` with the provided options")
+  .description("Runs `cdk synthetize` and `cdk deploy` from a single command.")
   .argument("[config]", "Path to config .env file", "./.env")
   .option("-v --verbose", "Verbose mode", false)
   .option(
@@ -21,11 +21,6 @@ program
   .option(
     "--ci",
     "Force CI detection. If CI=true then logs will be sent to stdout instead of stderr.",
-  )
-  .option(
-    "--deploy",
-    "Deploys the stack(s) named STACKS into your AWS account",
-    false,
   )
   .option(
     "--bootstrap",
@@ -99,8 +94,5 @@ program
     }
 
     await command.spawn("npx", ...["cdk", "synth", ...args]);
-
-    if (options.deploy) {
-      await command.spawn("npx", ...["cdk", "deploy", ...args]);
-    }
+    await command.spawn("npx", ...["cdk", "deploy", ...args]);
   });
