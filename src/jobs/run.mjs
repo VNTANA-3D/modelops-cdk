@@ -2,68 +2,17 @@ import { readFileSync } from "fs";
 import { dirname, resolve } from "path";
 import { Command, Option } from "commander";
 import * as YAML from "yaml";
-import { z } from "zod";
 
 import { fileURLToPath } from "url";
 
+import { splitString, camelToSnakeCase, sleep } from "../lib/utils.mjs";
+import { Pair } from "../lib/validators.mjs";
 import { Shell } from "../lib/shell.mjs";
 import { describe } from "./describe.mjs";
 import { logs } from "./logs.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-const camelToSnakeCase = (str) =>
-  str.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`).slice(1);
-
-const Pair = z.tuple([z.string(), z.any()]);
-
-/**
- * Sleeps for a given amount of time.
- * @param {number} ms - The amount of time to sleep in milliseconds.
- * @returns {Promise<void>}
- */
-async function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function splitString(input) {
-  const result = [];
-  let current = "";
-  let inQuotes = false;
-  let inBrackets = 0;
-  let inBraces = 0;
-
-  for (let i = 0; i < input.length; i++) {
-    const char = input[i];
-
-    if (char === '"' && input[i - 1] !== "\\") {
-      inQuotes = !inQuotes;
-    } else if (!inQuotes) {
-      if (char === "[") {
-        inBrackets++;
-      } else if (char === "]") {
-        inBrackets--;
-      } else if (char === "{") {
-        inBraces++;
-      } else if (char === "}") {
-        inBraces--;
-      } else if (char === "," && inBrackets === 0 && inBraces === 0) {
-        result.push(current.trim());
-        current = "";
-        continue;
-      }
-    }
-
-    current += char;
-  }
-
-  if (current) {
-    result.push(current.trim());
-  }
-
-  return result;
-}
 
 export const program = new Command();
 
@@ -124,7 +73,7 @@ program
     ).implies({ print: true, dryRun: true }),
   )
   .addOption(
-    new Option("-f, --format <FORMAT>", "Type of Logger to use")
+    new Option("-f, --format <FORMAT>", "Pipeline format")
       .choices(["json", "yaml"])
       .default("yaml"),
   )

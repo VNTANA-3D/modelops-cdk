@@ -38,3 +38,5 @@ export const JobsSummary = z.object({
 });
 
 export const FromAgo = z.tuple([z.coerce.number(), z.string()]);
+
+export const Pair = z.tuple([z.string(), z.any()]);

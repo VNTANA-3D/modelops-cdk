@@ -27,7 +27,6 @@ tasks:
       src: "{{ asset.dest }}"
       dest: "{{ optimized }}"
       config:
-        detect_instances: true
         reset_scaling: true
         pot_textures: true
         ignore_parallel_geometry: true

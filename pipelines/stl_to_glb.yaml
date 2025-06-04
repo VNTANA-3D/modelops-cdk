@@ -1,0 +1,49 @@
+---
+name: STP to GLB
+description: Converts an STL file stored in S3 to GLB
+state:
+  optimized: /home/workspace/converted.glb
+  suffix: converted
+  extension: stl
+  target_tex_density: 3000
+
+  # NOTE: The full path to the `stl` object in S3.
+  src: YOUR_STL_ASSET_TO_CONVERT_PATH
+  # NOTE: The full path where the converted `glb` object should be stored.
+  dest: YOUR_GLB_CONVERTED_ASSET_PATH
+  # NOTE: Make sure the ModelOps Handler has R/W access to this Bucket.
+  bucket: YOUR_S3_BUCKET
+tasks:
+  - name: Download Asset
+    module: S3
+    props:
+      src: "{{ object }}"
+      dest: "original.stl"
+      bucket: "{{ bucket }}"
+      action: download
+    register: asset
+  - module: STL2OBJ
+    props:
+      src: "{{ asset.dest }}"
+      dest: "original.obj"
+      config:
+        f: obj
+    register: obj
+  - module: MeshOptimizer
+    props:
+      src: "{{ obj.dest }}"
+      dest: "{{ optimized }}"
+      config:
+        c0: true
+        allow_draco_decode: true
+        skip_scene_validation: true
+        scale_size: "0"
+        rotation: "0 0 0"
+    register: optimized
+  - name: Upload Optimized GLB
+    module: S3
+    props:
+      src: "{{ optimized.dest }}"
+      dest: "{{ dest }}"
+      bucket: "{{ bucket }}"
+      action: upload

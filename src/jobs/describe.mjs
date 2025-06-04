@@ -42,7 +42,7 @@ program
   .action(async (jobId) => {
     let job = {};
     try {
-      job = describe(jobId);
+      job = await describe(jobId);
     } catch (err) {
       console.error(err);
       process.exit(1);
