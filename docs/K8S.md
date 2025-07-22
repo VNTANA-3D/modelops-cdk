@@ -36,7 +36,7 @@ Before you begin, ensure you have:
 The handler accepts command-line arguments:
 
 ```bash
-node /home/app/apps/handler/dist/index.js run -i yaml --debug -f /path/to/pipeline.yaml
+node /home/app/apps/handler/dist/index.js -i yaml --debug -f /path/to/pipeline.yaml
 ```
 
 ### Available Processing Modules
