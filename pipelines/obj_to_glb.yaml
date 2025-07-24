@@ -1,0 +1,46 @@
+name: OBJ to GLB
+description: Downloads an asset from S3 and converts it to OBJ using the MeshOptimizer module.
+state:
+  optimized: /home/workspace/optimized.glb
+  suffix: optimized
+  extension: obj
+  target_tex_density: 3000
+
+  # NOTE: Don't include the extension in the name.
+  name: YOUR_UNOPTIMIZED_ASSET_NAME
+  # NOTE: Make sure the ModelOps Handler has R/W access to this Bucket.
+  bucket: YOUR_S3_BUCKET
+  # NOTE: Pass an empty string if the asset is in the root.
+  prefix: YOUR_S3_ASSET_PREFIX
+tasks:
+  - name: Download Asset
+    module: S3
+    props:
+      src: "{{ prefix }}/{{ name }}.{{ extension }}"
+      dest: "{{ name }}.{{ extension }}"
+      bucket: "{{ bucket }}"
+      action: download
+    register: asset
+  - module: MeshOptimizer
+    props:
+      src: "{{ asset.dest }}"
+      dest: "{{ optimized }}"
+      config:
+        c0: true
+        output_fbx: false
+        output_usdz: false
+        output_obj: false
+    register: optimized
+  - name: Debug download output
+    module: Debug
+    props:
+      var: optimized
+      format: yaml
+
+  - name: Upload Optimized GLB
+    module: S3
+    props:
+      src: "{{ optimized.dest }}"
+      dest: "{{ prefix }}/{{ name }}.{{ suffix }}.glb"
+      bucket: "{{ bucket }}"
+      action: upload
