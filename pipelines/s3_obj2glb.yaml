@@ -1,0 +1,60 @@
+name: s3obj2glb
+description: Downloads an asset from S3 and optimizes it using MeshOptimizer
+state:
+  optimized: /home/workspace/optimized.glb
+  suffix: optimized
+  extension: zip
+
+  # NOTE: Don't include the extension in the name.
+  name: YOUR_UNOPTIMIZED_ASSET_NAME
+  # NOTE: Make sure the ModelOps Handler has R/W access to this Bucket.
+  bucket: YOUR_S3_BUCKET
+  # NOTE: Pass an empty string if the asset is in the root.
+  prefix: YOUR_S3_ASSET_PREFIX
+tasks:
+  - name: Download Asset
+    module: S3
+    props:
+      src: "{{ prefix }}/{{ name }}.{{ extension }}"
+      dest: "{{ name }}.{{ extension }}"
+      bucket: "{{ bucket }}"
+      action: download
+    register: download
+
+  - name: Prepare the asset for optimization
+    module: AssetConverter
+    props:
+      src: "{{ download.dest }}"
+      dest: /home/workspace/converted
+    register: "input"
+
+  - module: MeshOptimizer
+    props:
+      src: "{{ input.dest }}"
+      dest: "{{ optimized }}"
+      config:
+        c: true
+        allow_draco_decode: true
+        reset_center:
+          - center
+          - center
+          - center
+        rotation:
+          - 0
+          - 0
+          - 0
+        draco_encode: true
+        skip_scene_validation: false
+    register: optimized
+  - name: Debug download output
+    module: Debug
+    props:
+      var: optimized
+      format: yaml
+  - name: Upload Optimized GLB
+    module: S3
+    props:
+      src: "{{ optimized.dest }}"
+      dest: "{{ prefix }}/{{ name }}.{{ suffix }}.glb"
+      bucket: "{{ bucket }}"
+      action: upload
