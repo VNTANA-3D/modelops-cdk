@@ -15,12 +15,13 @@ export class Shell {
    * @returns {Promise<void>}
    */
   async spawn(command, ...args) {
+    const env = { ...this.#env, ...process.env };
     return new Promise((res, rej) => {
       const proc = spawn(command, [...args], {
         cwd: resolve("."),
         stdio: "inherit",
         shell: true,
-        env: { ...this.#env, ...process.env },
+        env,
       });
 
       proc.on("close", (code) => {
