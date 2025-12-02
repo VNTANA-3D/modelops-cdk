@@ -9,13 +9,19 @@ export const ConfigProps = z.object({
   // AWS Account
   account: z.string().optional().describe("AWS Account Id"),
   region: z.string().default("us-east-1").describe("AWS Region"),
+  // Compute Backend
+  computeBackend: z
+    .enum(["batch", "eks", "both"])
+    .optional()
+    .default("batch")
+    .describe("Compute backend: batch (AWS Batch/Fargate), eks (EKS), or both"),
   // ECR
   image: z
     .string()
     .default(
       "709825985650.dkr.ecr.us-east-1.amazonaws.com/vntana/vntana-v98543",
     ),
-  tag: z.string().default("20250926.1"),
+  tag: z.string().default("20251203.1"),
   // Flags
   useDefaultVpc: z
     .boolean()
@@ -42,6 +48,24 @@ export const ConfigProps = z.object({
     .transform((val) => (!val || val.length == 0 ? null : val))
     .describe(
       "List of Subnet Ids to use. All the subnets in the VPC will be used if unset",
+    ),
+  batchSubnetIds: z
+    .array(z.string())
+    .optional()
+    .nullable()
+    .default(null)
+    .transform((val) => (!val || val.length == 0 ? null : val))
+    .describe(
+      "Subnet IDs specifically for Batch stack (used when SUBNET_IDS is empty)",
+    ),
+  eksSubnetIds: z
+    .array(z.string())
+    .optional()
+    .nullable()
+    .default(null)
+    .transform((val) => (!val || val.length == 0 ? null : val))
+    .describe(
+      "Subnet IDs specifically for EKS stack (used when SUBNET_IDS is empty)",
     ),
   // S3
   s3BucketName: z
@@ -92,6 +116,46 @@ export const ConfigProps = z.object({
     .optional()
     .default("job")
     .describe("Custom Log Group stream prefix"),
+  // EKS-specific options
+  eksClusterName: z
+    .string()
+    .optional()
+    .nullable()
+    .default(null)
+    .transform((val) => (val === "" ? null : val))
+    .describe("EKS cluster name"),
+  eksNamespace: z
+    .string()
+    .optional()
+    .default("modelops")
+    .describe("EKS namespace for jobs"),
+  eksNodeInstanceType: z
+    .string()
+    .optional()
+    .default("c5.4xlarge")
+    .describe("EKS node instance type for Karpenter"),
+  eksCreateVpc: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Flag to create a new VPC for EKS"),
+  eksVpcCidr: z
+    .string()
+    .optional()
+    .default("10.0.0.0/16")
+    .describe("CIDR block for EKS VPC when creating new VPC"),
+  eksKubeconfigPath: z
+    .string()
+    .optional()
+    .nullable()
+    .default(null)
+    .transform((val) => (val === "" ? null : val))
+    .describe("Path to kubeconfig file for EKS cluster access"),
+  eksSubnetType: z
+    .enum(["private", "public", "both"])
+    .optional()
+    .default("private")
+    .describe("Subnet type for EKS nodes: private, public, or both"),
 });
 
 export type ConfigPropsT = z.infer<typeof ConfigProps>;
@@ -110,6 +174,8 @@ export function getConfig(customDotEnvPath: string = "") {
     /// AWS
     account: process.env.AWS_ACCOUNT_ID,
     region: process.env.AWS_REGION,
+    /// Compute Backend
+    computeBackend: process.env.COMPUTE_BACKEND,
     /// ECR
     image: process.env.UNSAFE_ECR_IMAGE,
     tag: process.env.UNSAFE_ECR_IMAGE_TAG,
@@ -120,6 +186,12 @@ export function getConfig(customDotEnvPath: string = "") {
     vpcId: process.env.VPC_ID,
     subnetIds: process.env.SUBNET_IDS
       ? process.env.SUBNET_IDS.split(",")
+      : undefined,
+    batchSubnetIds: process.env.BATCH_SUBNET_IDS
+      ? process.env.BATCH_SUBNET_IDS.split(",")
+      : undefined,
+    eksSubnetIds: process.env.EKS_SUBNET_IDS
+      ? process.env.EKS_SUBNET_IDS.split(",")
       : undefined,
     /// S3
     s3BucketName: process.env.S3_BUCKET_NAME,
@@ -138,6 +210,14 @@ export function getConfig(customDotEnvPath: string = "") {
     /// Log Group
     logGroupName: process.env.LOG_GROUP_NAME,
     logGroupStreamPrefix: process.env.LOG_GROUP_STREAM_PREFIX,
+    /// EKS
+    eksClusterName: process.env.EKS_CLUSTER_NAME,
+    eksNamespace: process.env.EKS_NAMESPACE,
+    eksNodeInstanceType: process.env.EKS_NODE_INSTANCE_TYPE,
+    eksCreateVpc: process.env.EKS_CREATE_VPC === "true",
+    eksVpcCidr: process.env.EKS_VPC_CIDR,
+    eksKubeconfigPath: process.env.EKS_KUBECONFIG_PATH,
+    eksSubnetType: process.env.EKS_SUBNET_TYPE,
   });
 }
 

@@ -27,6 +27,16 @@ export class ModelopsOnAwsStack extends cdk.Stack {
     this.#config = props.config;
     this.#name = props.config.stackName;
 
+    // Acknowledge warnings that don't affect functionality
+    cdk.Annotations.of(this).acknowledgeWarning(
+      "@aws-cdk/aws-ec2:noSubnetRouteTableId",
+      "Route table not needed for Batch subnet selection"
+    );
+    cdk.Annotations.of(this).acknowledgeWarning(
+      "@aws-cdk/aws-ecs:ecrImageRequiresPolicy",
+      "ECR pull policy is handled by task execution role"
+    );
+
     this.init();
   }
 
@@ -121,19 +131,27 @@ export class ModelopsOnAwsStack extends cdk.Stack {
   }
 
   private getSubnetIds(vpc: cdk.aws_ec2.IVpc) {
+    // Priority: SUBNET_IDS > BATCH_SUBNET_IDS > VPC discovery
+    const subnetIds = this.#config.subnetIds?.length
+      ? this.#config.subnetIds
+      : this.#config.batchSubnetIds || [];
+
+    // If explicit subnet IDs provided, import them directly
+    // This avoids issues with VPC lookup not finding newly created subnets
+    if (subnetIds.length > 0) {
+      return subnetIds.map((subnetId, index) =>
+        cdk.aws_ec2.Subnet.fromSubnetId(this, `ImportedSubnet${index}`, subnetId)
+      );
+    }
+
+    // Fall back to VPC discovered subnets
     const vpcSubnets = [...vpc.privateSubnets, ...vpc.publicSubnets];
-    const subnetIds = this.#config.subnetIds || [];
 
-    const subnets =
-      subnetIds.length > 0
-        ? vpcSubnets.filter((subnet) => subnetIds.includes(subnet.subnetId))
-        : vpcSubnets;
-
-    if (subnets.length === 0) {
+    if (vpcSubnets.length === 0) {
       throw new Error("No subnets found");
     }
 
-    return subnets as cdk.aws_ec2.ISubnet[];
+    return vpcSubnets as cdk.aws_ec2.ISubnet[];
   }
 
   private getS3Bucket() {

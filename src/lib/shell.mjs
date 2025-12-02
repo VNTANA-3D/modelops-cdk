@@ -78,6 +78,52 @@ export class Shell {
       });
     });
   }
+
+  /**
+   * Run a command with stdin input and return the output.
+   * @param {string} command - The command to run
+   * @param {string[]} args - Command arguments
+   * @param {string} stdin - Data to write to stdin
+   * @returns {Promise<string>} The output of the command.
+   */
+  async runWithStdin(command, args, stdin) {
+    return new Promise((res, rej) => {
+      const proc = spawn(command, args, {
+        cwd: resolve("."),
+        stdio: ["pipe", "pipe", "pipe"],
+        shell: false,
+        env: { ...this.#env, ...process.env },
+      });
+
+      let stdout = "";
+      let stderr = "";
+
+      proc.stdout.on("data", (data) => {
+        stdout += data.toString();
+      });
+
+      proc.stderr.on("data", (data) => {
+        stderr += data.toString();
+      });
+
+      proc.on("close", (code) => {
+        if (code !== 0) {
+          rej(new Error(stderr.trim() || `Command exited with code ${code}`));
+        } else {
+          res(stdout.trim());
+        }
+      });
+
+      proc.on("error", (err) => {
+        console.error(`error:`, err);
+        rej(err);
+      });
+
+      // Write to stdin and close it
+      proc.stdin.write(stdin);
+      proc.stdin.end();
+    });
+  }
 }
 
 export default Shell;

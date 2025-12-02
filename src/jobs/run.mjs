@@ -2,14 +2,13 @@ import { readFileSync } from "fs";
 import { dirname, resolve } from "path";
 import { Command, Option } from "commander";
 import * as YAML from "yaml";
+import * as dotenv from "dotenv";
 
 import { fileURLToPath } from "url";
 
 import { splitString, camelToSnakeCase, sleep } from "../lib/utils.mjs";
 import { Pair } from "../lib/validators.mjs";
-import { Shell } from "../lib/shell.mjs";
-import { describe } from "./describe.mjs";
-import { logs } from "./logs.mjs";
+import { getBackend } from "./backends/index.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -46,14 +45,69 @@ program
     {},
   )
   .option(
-    "-n, --job-name",
+    "-n, --job-name <JOB_NAME>",
     "Job name. Can include a `$timestamp` string that will be substituted with a timestamp.",
-    false,
   )
-  .option(
-    "s, --stack-name <STACK_NAME>",
-    "Name of your CDK stack.",
-    "ModelopsHandler",
+  .addOption(
+    new Option("-s, --stack-name <STACK_NAME>", "Name of your CDK stack.")
+      .env("STACK_NAME")
+      .default("ModelopsHandler"),
+  )
+  .addOption(
+    new Option("-b, --backend <BACKEND>", "Compute backend to use.")
+      .env("COMPUTE_BACKEND")
+      .choices(["batch", "eks"])
+      .default("batch"),
+  )
+  .addOption(
+    new Option("-r, --region <REGION>", "AWS region.")
+      .env("AWS_REGION")
+      .default("us-east-1"),
+  )
+  .addOption(
+    new Option("--image <IMAGE>", "ECR image URI.")
+      .env("UNSAFE_ECR_IMAGE")
+      .default(
+        "709825985650.dkr.ecr.us-east-1.amazonaws.com/vntana/vntana-v98543",
+      ),
+  )
+  .addOption(
+    new Option("--tag <TAG>", "ECR image tag.")
+      .env("UNSAFE_ECR_IMAGE_TAG")
+      .default("20251201.1"),
+  )
+  .addOption(
+    new Option("--job-cpu <CPU>", "Number of vCPUs for the job.")
+      .env("JOB_CPU")
+      .default("1"),
+  )
+  .addOption(
+    new Option("--job-memory <MEMORY>", "GB of memory for the job.")
+      .env("JOB_MEMORY")
+      .default("1"),
+  )
+  .addOption(
+    new Option(
+      "--job-storage <STORAGE>",
+      "GB of ephemeral storage for the job.",
+    )
+      .env("JOB_EPHEMERAL_STORAGE")
+      .default("30"),
+  )
+  .addOption(
+    new Option("--job-retries <RETRIES>", "Number of retry attempts.")
+      .env("JOB_RETRY_ATTEMPTS")
+      .default("1"),
+  )
+  .addOption(
+    new Option("--eks-namespace <NAMESPACE>", "EKS namespace for jobs.")
+      .env("EKS_NAMESPACE")
+      .default("modelops"),
+  )
+  .addOption(
+    new Option("--eks-kubeconfig <PATH>", "Path to kubeconfig file.").env(
+      "EKS_KUBECONFIG_PATH",
+    ),
   )
   .option(
     "--print",
@@ -82,7 +136,37 @@ program
       .choices(["color", "json", "stdout"])
       .default("stdout"),
   )
+  .addOption(
+    new Option("-c, --config <CONFIG>", "Path to the configuration file.")
+      .env("MODELOPS_CONFIG")
+      .default("./.env"),
+  )
   .action(async (pipeline, state, options) => {
+    // Load configuration from .env file (provides defaults)
+    dotenv.config({ path: options.config });
+
+    // CLI arguments take precedence (Commander handles env fallback via .env())
+    const computeBackend = options.backend;
+    const stackName = options.stackName;
+
+    // Build backend config - CLI args already have env fallbacks via Commander
+    const backendConfig = {
+      computeBackend,
+      stackName,
+      image: options.image,
+      tag: options.tag,
+      region: options.region,
+      jobCpu: parseInt(options.jobCpu, 10),
+      jobMemory: parseInt(options.jobMemory, 10),
+      jobEphemeralStorage: parseInt(options.jobStorage, 10),
+      jobRetryAttempts: parseInt(options.jobRetries, 10),
+      eksNamespace: options.eksNamespace,
+      eksKubeconfigPath: options.eksKubeconfig || null,
+    };
+
+    // Get backend
+    const backend = getBackend(computeBackend, backendConfig);
+
     let path = resolve(
       __dirname,
       "../../pipelines",
@@ -103,25 +187,10 @@ program
 
     definition.state = { ...definition.state, ...state };
 
-    const $ = new Shell();
-
     const timestamp = Date.now();
     const jobName = options.name
-      ? options.name
-      : `${camelToSnakeCase(definition.name.trim().replace(/ /g, ""))}`;
-
-    const jobQueue = options.stackName + "JobQueue";
-    const jobDefinition = options.stackName + "JobDefinition";
-    const pseudoRandomEOF = `EOF${timestamp}`;
-    const command = [
-      "/bin/bash",
-      "-c",
-      [
-        `cat <<-'${pseudoRandomEOF}' | /home/app/apps/handler/dist/index.js -i json --logger ${options.logger} ${options.debug ? "--debug" : ""}`,
-        `${JSON.stringify(definition)}`,
-        `${pseudoRandomEOF}`,
-      ].join("\n"),
-    ];
+      ? options.name.replace("$timestamp", timestamp)
+      : `${camelToSnakeCase(definition.name.trim().replace(/ /g, ""))}-${timestamp}`;
 
     if (options.print) {
       switch (options.format) {
@@ -137,31 +206,20 @@ program
       return;
     }
 
-    const jobId = await $.run(
-      "aws",
-      "batch",
-      "submit-job",
-      ...[
-        "--job-name",
-        jobName,
-        "--job-queue",
-        jobQueue,
-        `--job-definition`,
-        jobDefinition,
-        `--query`,
-        `jobId`,
-        `--output`,
-        `text`,
-        `--container-overrides`,
-        `'{"command": ${JSON.stringify(command)}}'`,
-      ],
-    );
+    // Submit job using backend
+    const jobId = await backend.submitJob({
+      jobName,
+      pipeline: definition,
+      stackName,
+      logger: options.logger,
+      debug: options.debug,
+    });
 
     process.stdout.write(jobId + "\n");
 
     if (options.watch) {
       while (true) {
-        const job = await describe(jobId);
+        const job = await backend.describeJob(jobId);
 
         if (
           job.status === "RUNNING" ||
@@ -182,6 +240,6 @@ program
 
       process.stderr.write("\n");
 
-      await logs(jobId);
+      await backend.getLogs(jobId, { follow: true });
     }
   });

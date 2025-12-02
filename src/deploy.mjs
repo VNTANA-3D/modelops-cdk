@@ -1,6 +1,7 @@
 import { resolve } from "path";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { z } from "zod";
+import * as dotenv from "dotenv";
 
 import { Shell } from "./lib/shell.mjs";
 
@@ -28,21 +29,34 @@ program
     false,
   )
   .option("--stack_name <string>", "Stack name.")
-  .option("--aws_account <string>", "AWS Account ID")
+  .option("--aws_account_id <string>", "AWS Account ID")
   .option("--aws_region <string>", "AWS Region.")
+  .addOption(
+    new Option(
+      "--compute_backend <string>",
+      "Compute backend: batch, eks, or both",
+    ).choices(["batch", "eks", "both"]),
+  )
   .option("--use_default_vpc <string>", "Flag to use the `default` VPC.")
   .option("--vpc_id <string>", "Custom VPC Id (overrides `USE_DEFAULT_VPC`.)")
   .option(
     "--subnet_ids <string>",
     "List of Subnet Ids to use. All the subnets in the VPC will be used if unset.",
   )
-  .option("--s3_bucket_name <string>", "Stack managed S3 Bucket name.")
-  .option("--ecs_cluster_arn <string>", "External ECS cluster ARN.")
   .option(
-    "--ecs_memory_limit_mib <string>",
-    "ECS container memory limit in MiB.",
+    "--batch_subnet_ids <string>",
+    "Subnet IDs specifically for Batch stack (used when SUBNET_IDS is empty).",
   )
-  .option("--ecs_cpu <string>", "ECS container cpu.")
+  .option(
+    "--eks_subnet_ids <string>",
+    "Subnet IDs specifically for EKS stack (used when SUBNET_IDS is empty).",
+  )
+  .option("--s3_bucket_name <string>", "Stack managed S3 Bucket name.")
+  .option("--job_memory <string>", "GB of memory for jobs.")
+  .option("--job_cpu <string>", "Number of vCPUs for jobs.")
+  .option("--job_ephemeral_storage <string>", "GB of ephemeral storage for jobs.")
+  .option("--job_retry_attempts <string>", "Number of retry attempts for jobs.")
+  .option("--job_policy_file <string>", "Path to custom IAM policy file.")
   .option("--log_group_name <string>", "Custom Log Group name.")
   .option(
     "--log_group_stream_prefix <string>",
@@ -56,11 +70,27 @@ program
     "--unsafe_ecr_image_tag <string>",
     "[UNSAFE] Vntana ECR Marketplace image tag",
   )
+  // EKS-specific options
+  .option("--eks_cluster_name <string>", "EKS cluster name.")
+  .option("--eks_namespace <string>", "EKS namespace for jobs.")
+  .option("--eks_node_instance_type <string>", "EKS node instance type for Karpenter.")
+  .option("--eks_create_vpc <string>", "Create a new VPC for EKS (true/false).")
+  .option("--eks_vpc_cidr <string>", "CIDR block for new EKS VPC.")
+  .addOption(
+    new Option(
+      "--eks_subnet_type <string>",
+      "Subnet type for EKS: private, public, or both",
+    ).choices(["private", "public", "both"]),
+  )
   .action(async (config, options) => {
+    // Load config file to read environment variables
+    const configPath = resolve(config);
+    dotenv.config({ path: configPath });
+
     const UNTRACKED_OPTIONS = ["verbose", "role", "deploy", "bootstrap"];
 
     const envs = {
-      MODELOPS_CONFIG: z.string().parse(resolve(config)),
+      MODELOPS_CONFIG: z.string().parse(configPath),
     };
 
     for (const [key, value] of Object.entries(options)) {
@@ -93,6 +123,20 @@ program
       await command.spawn("npx", ...["cdk", "bootstrap", ...args]);
     }
 
+    // Determine which stack(s) to deploy based on compute_backend
+    const deployArgs = [...args];
+    const computeBackend = options.compute_backend || envs.COMPUTE_BACKEND || process.env.COMPUTE_BACKEND;
+    const stackName = options.stack_name || envs.STACK_NAME || process.env.STACK_NAME || "ModelopsHandler";
+
+    if (computeBackend === "both") {
+      deployArgs.push("--all");
+    } else if (computeBackend === "eks") {
+      deployArgs.push(stackName + "Eks");
+    } else {
+      // batch (default)
+      deployArgs.push(stackName);
+    }
+
     await command.spawn("npx", ...["cdk", "synth", ...args]);
-    await command.spawn("npx", ...["cdk", "deploy", ...args]);
+    await command.spawn("npx", ...["cdk", "deploy", ...deployArgs]);
   });

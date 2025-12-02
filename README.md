@@ -1,10 +1,34 @@
-# Welcome to your CDK TypeScript project
+# VNTANA ModelOps CDK
 
 CDK Project to deploy VNTANA ModelOps in AWS.
 
 ## Introduction
 
-This project showcases how to install the VNTANA ModelOps Handler in your own AWS infrastructure to process your 3D assets. It includes a fully automated method for deploying an example infrastructure to run optimization jobs based on AWS Batch and AWS Fargate. Additionally, it provides numerous settings to customize the example to your needs, positioning it as a stepping stone for building your own infrastructure.
+This project showcases how to install the VNTANA ModelOps Handler in your own AWS infrastructure to process your 3D assets. It includes a fully automated method for deploying infrastructure to run optimization jobs using either **AWS Batch/Fargate** or **Amazon EKS** (Elastic Kubernetes Service). Additionally, it provides numerous settings to customize the deployment to your needs.
+
+## Compute Backends
+
+The project supports three compute backend configurations:
+
+| Backend | Description |
+| ------- | ----------- |
+| `batch` | AWS Batch with Fargate (default). Serverless, pay-per-use, simpler setup. |
+| `eks`   | Amazon EKS with Karpenter autoscaling. Kubernetes-native, scale-to-zero, more control. |
+| `both`  | Deploy both stacks simultaneously for hybrid workloads. |
+
+### AWS Batch/Fargate (Default)
+
+- **Serverless**: No infrastructure to manage
+- **Pay-per-use**: Only pay for compute time used
+- **Simple**: Minimal configuration required
+- **Best for**: Sporadic workloads, simple job requirements
+
+### Amazon EKS with Karpenter
+
+- **Kubernetes-native**: Full K8s ecosystem access
+- **Scale-to-zero**: Karpenter automatically provisions/deprovisions nodes
+- **Flexible**: Custom node types, spot instances, advanced scheduling
+- **Best for**: High-volume workloads, K8s integration, advanced requirements
 
 A `NodeJS`-based CLI is also included to simplify the process of interacting with the project, exposing commands to build the infrastructure, and run and monitor custom jobs.
 
@@ -58,15 +82,29 @@ To configure what the `synth` command will deploy, create a `.env` file with you
 
 This table lists all the available options:
 
+### General Configuration
+
 | Name                      | Default                 | Description                                                              |
 | ------------------------- | ----------------------- | ------------------------------------------------------------------------ |
 | `STACK_NAME`              | `VntanaModelOpsHandler` | Stack name.                                                              |
 | `AWS_ACCOUNT_ID`          | `null`                  | AWS Account ID.                                                          |
 | `AWS_REGION`              | `us-east-1`             | AWS Region.                                                              |
+| `COMPUTE_BACKEND`         | `batch`                 | Compute backend: `batch`, `eks`, or `both`.                              |
+
+### VPC & Network Configuration
+
+| Name                      | Default                 | Description                                                              |
+| ------------------------- | ----------------------- | ------------------------------------------------------------------------ |
 | `USE_DEFAULT_VPC`         | `false`                 | Flag to use the default VPC.                                             |
-| `USE_SPOT_INSTANCES`      | `false`                 | Flag to enable spot instances.                                           |
 | `VPC_ID`                  | `null`                  | Custom VPC ID (overrides `USE_DEFAULT_VPC`).                             |
-| `SUBNET_IDS`              | `null`                  | List of Subnet IDs to use. All subnets in the VPC will be used if unset. |
+| `SUBNET_IDS`              | `null`                  | Subnet IDs for both stacks. Takes priority over stack-specific subnets.  |
+| `BATCH_SUBNET_IDS`        | `null`                  | Subnet IDs specifically for Batch stack (used when `SUBNET_IDS` empty).  |
+| `EKS_SUBNET_IDS`          | `null`                  | Subnet IDs specifically for EKS stack (used when `SUBNET_IDS` empty).    |
+
+### Job Configuration
+
+| Name                      | Default                 | Description                                                              |
+| ------------------------- | ----------------------- | ------------------------------------------------------------------------ |
 | `S3_BUCKET_NAME`          | `null`                  | Stack-managed S3 bucket name.                                            |
 | `JOB_MEMORY`              | `1`                     | The number of GB of memory for the job.                                  |
 | `JOB_CPU`                 | `1`                     | The number of vCPU for the job.                                          |
@@ -76,7 +114,24 @@ This table lists all the available options:
 | `LOG_GROUP_NAME`          | `null`                  | Custom log group name.                                                   |
 | `LOG_GROUP_STREAM_PREFIX` | `job`                   | Custom log group stream prefix.                                          |
 
-> You can also override these variables through environment variables or as options when calling the `modelops-cdk deploy` command.
+### Batch-Specific Configuration
+
+| Name                      | Default                 | Description                                                              |
+| ------------------------- | ----------------------- | ------------------------------------------------------------------------ |
+| `USE_SPOT_INSTANCES`      | `false`                 | Flag to enable spot instances for Batch.                                 |
+
+### EKS-Specific Configuration
+
+| Name                      | Default                 | Description                                                              |
+| ------------------------- | ----------------------- | ------------------------------------------------------------------------ |
+| `EKS_CLUSTER_NAME`        | `null`                  | EKS cluster name (auto-generated if not set).                            |
+| `EKS_NAMESPACE`           | `modelops`              | Kubernetes namespace for jobs.                                           |
+| `EKS_NODE_INSTANCE_TYPE`  | `c5.4xlarge`            | EC2 instance type for Karpenter-managed nodes.                           |
+| `EKS_CREATE_VPC`          | `false`                 | Create a new VPC for EKS (with NAT Gateway).                             |
+| `EKS_VPC_CIDR`            | `10.0.0.0/16`           | CIDR block for new EKS VPC.                                              |
+| `EKS_SUBNET_TYPE`         | `private`               | Subnet type for EKS: `private`, `public`, or `both`.                     |
+
+> You can also override these variables through environment variables or as options when calling the `./index.mjs deploy` command.
 
 Once you update your `.env` file with all the required configuration you are ready to deploy. If this is the first time you'll be using the AWS CDK on your account, you are going to need to bootstrap it. This can be easily done through the `deploy` command by passing the `--bootstrap` flag.
 
@@ -84,10 +139,41 @@ Once you update your `.env` file with all the required configuration you are rea
 
 ```bash
 # Deploy the infrastructure
-modelops-cdk deploy
+./index.mjs deploy
 
-# Optionally bootstrap the infrastructure for the firs time.
-modelops-cdk deploy --bootstrap
+# Optionally bootstrap the infrastructure for the first time
+./index.mjs deploy --bootstrap
+```
+
+### Deployment Examples
+
+**Deploy Batch stack only (default):**
+
+```bash
+./index.mjs deploy --compute_backend batch
+```
+
+**Deploy EKS stack only:**
+
+```bash
+./index.mjs deploy --compute_backend eks \
+  --eks_subnet_ids "subnet-abc123,subnet-def456,subnet-ghi789"
+```
+
+**Deploy both stacks with separate subnets:**
+
+```bash
+./index.mjs deploy --compute_backend both \
+  --batch_subnet_ids "subnet-111,subnet-222" \
+  --eks_subnet_ids "subnet-333,subnet-444,subnet-555"
+```
+
+**Deploy EKS with a new VPC:**
+
+```bash
+./index.mjs deploy --compute_backend eks \
+  --eks_create_vpc true \
+  --eks_vpc_cidr "10.0.0.0/16"
 ```
 
 > If you create a `.env` file in the root of this repository, it will be used by default.
@@ -100,6 +186,82 @@ These variables are also available, though it is recommended not to modify them 
 | `UNSAFE_ECR_IMAGE_TAG` | VNTANA ECR Marketplace image tag. |
 
 If the process is successful, you should have all the necessary resources to run your jobs.
+
+## EKS Cluster Access
+
+After deploying the EKS stack, you need to configure `kubectl` access. The deployment outputs include a command to update your kubeconfig:
+
+```bash
+# Get the kubeconfig command from stack outputs
+aws eks update-kubeconfig --name <cluster-name> --region <region>
+```
+
+### Granting Access to IAM Users/Roles
+
+By default, only the IAM principal that deployed the cluster has access. To grant access to other users (e.g., AWS SSO roles), you need to:
+
+1. **Update the cluster authentication mode** to allow API-based access entries:
+
+```bash
+aws eks update-cluster-config \
+  --name <cluster-name> \
+  --access-config authenticationMode=API_AND_CONFIG_MAP \
+  --region <region>
+
+# Wait for the update to complete
+aws eks wait cluster-active --name <cluster-name> --region <region>
+```
+
+2. **Get your IAM role ARN** (for SSO users, the path includes `aws-reserved/sso.amazonaws.com/`):
+
+```bash
+# Check your current identity
+aws sts get-caller-identity
+
+# Get the full role ARN (for SSO roles)
+aws iam get-role --role-name <role-name> --query 'Role.Arn' --output text
+```
+
+3. **Create an access entry** for your IAM role:
+
+```bash
+aws eks create-access-entry \
+  --cluster-name <cluster-name> \
+  --principal-arn "<full-role-arn>" \
+  --type STANDARD \
+  --region <region>
+```
+
+4. **Associate the cluster admin policy**:
+
+```bash
+aws eks associate-access-policy \
+  --cluster-name <cluster-name> \
+  --principal-arn "<full-role-arn>" \
+  --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy \
+  --access-scope type=cluster \
+  --region <region>
+```
+
+5. **Verify access**:
+
+```bash
+kubectl get nodes
+kubectl get namespaces
+```
+
+### EKS Architecture
+
+The EKS stack deploys the following components:
+
+- **EKS Cluster**: Kubernetes control plane (v1.30)
+- **Bootstrap Node Group**: A small `t3.small` node for system components (Karpenter)
+- **Karpenter**: Cluster autoscaler that provisions nodes on-demand and scales to zero
+- **NodePool & EC2NodeClass**: Karpenter configuration for job nodes
+- **Service Account**: IAM Role for Service Accounts (IRSA) for job pods
+- **Namespace**: Dedicated `modelops` namespace for jobs
+
+When a job is submitted, Karpenter automatically provisions an appropriately-sized node, runs the job, and deprovisions the node when idle.
 
 ### Use the `cdk` CLI directly
 
@@ -123,27 +285,27 @@ npx cdk bootstrap --app 'npx ts-node --prefer-ts-exts bin/modelops-handler.ts'
 
 ## Run a Job with the CLI
 
-The previous example shows how you can use the AWS CLI or its SDK to schedule Jobs on this infrastructure. Still, we've included some commands exposed through the `modelops-cdk` cli to simplify the process.
+The previous example shows how you can use the AWS CLI or its SDK to schedule Jobs on this infrastructure. Still, we've included some commands exposed through the CLI to simplify the process.
 
-You can run a job with the `modelops-cdk job run` command. This command takes in the name of one of the pipelines inside the [`./pipelines/`](./pipelines/) directory or a path to a Pipeline Definition written in YAML.
+You can run a job with the `./index.mjs jobs run` command. This command takes in the name of one of the pipelines inside the [`./pipelines/`](./pipelines/) directory or a path to a Pipeline Definition written in YAML.
 
 To run the previous example using the cli run:
 
 ```bash
-modelops-cdk job run hello_world
+./index.mjs jobs run hello_world
 ```
 
-You should see the `JOB_ID` printed to `stdout`. More sub-commands are available under the `modelops-cdk job` command to interact with your jobs.
+You should see the `JOB_ID` printed to `stdout`. More sub-commands are available under the `./index.mjs jobs` command to interact with your jobs.
 
 ```bash
 # List all the running commands.
-modelops-cdk job list
+./index.mjs jobs list
 
 # Describe a Job identified by its id.
-modelops-cdk job describe "$JOB_ID"
+./index.mjs jobs describe "$JOB_ID"
 
 # Get the execution logs of a Job identified by its id.
-modelops-cdk job logs "$JOB_ID"
+./index.mjs jobs logs "$JOB_ID"
 ```
 
 The `list` command takes in a `--from` options to tell the tool how far back you would like to look for jobs. It's set to `1 day` by default.
@@ -151,10 +313,101 @@ The `list` command takes in a `--from` options to tell the tool how far back you
 Also, if you want to run a `Job` and wait until it finishes, you can run it with the `--watch` flag.
 
 ```bash
-modelops-cdk job run hello_world --watch
+./index.mjs jobs run hello_world --watch
 ```
 
 You can also change the `logger` configuration to JSON if you prefer this format for your logs.
+
+### Running Jobs on Different Backends
+
+By default, the CLI uses the Batch backend. To run jobs on EKS, use the `--backend` option:
+
+```bash
+# Run on AWS Batch (default)
+./index.mjs jobs run hello_world --backend batch
+
+# Run on EKS
+./index.mjs jobs run hello_world --backend eks
+```
+
+You can also set the backend via environment variable:
+
+```bash
+export COMPUTE_BACKEND=eks
+./index.mjs jobs run hello_world
+```
+
+## Run a Job on EKS with kubectl
+
+You can also submit jobs directly using `kubectl`. Here's an example Kubernetes Job manifest:
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: modelops-job
+  namespace: modelops
+spec:
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      serviceAccountName: modelops-job-sa
+      containers:
+        - name: handler
+          image: 709825985650.dkr.ecr.us-east-1.amazonaws.com/vntana/vntana-v98543:20250926.1
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo '{"name":"Hello World","tasks":[{"module":"Shell","props":{"command":"echo","args":["Hello from EKS!"]}}]}' | \
+              /home/app/apps/handler/dist/index.js -i json --debug
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              cpu: "4"
+              memory: "8Gi"
+      restartPolicy: Never
+      nodeSelector:
+        karpenter.sh/nodepool: default
+      tolerations:
+        - key: "karpenter.sh/nodepool"
+          operator: "Exists"
+          effect: "NoSchedule"
+  backoffLimit: 1
+```
+
+Save this as `job.yaml` and apply it:
+
+```bash
+kubectl apply -f job.yaml
+
+# Watch the job status
+kubectl get jobs -n modelops -w
+
+# Get logs
+kubectl logs -n modelops -l job-name=modelops-job -f
+
+# Clean up
+kubectl delete job modelops-job -n modelops
+```
+
+### Monitoring Karpenter
+
+To see Karpenter provisioning nodes for your jobs:
+
+```bash
+# Watch nodes being created/removed
+kubectl get nodes -w
+
+# Check Karpenter logs
+kubectl logs -n karpenter -l app.kubernetes.io/name=karpenter -f
+
+# View NodePool status
+kubectl get nodepools
+kubectl get ec2nodeclasses
+```
 
 ## Manually run a Pipeline
 
@@ -298,10 +551,10 @@ The only required parameter is the Task module.
 In the example, you can see that the `Greeting` Task uses the value of `name` stored in the `state`. By default, this value will be set to `World` but we can change it at the moment when we create the Job to change it.
 
 ```bash
-modelops-cdk job run hello_world name=Modelops --watch
+./index.mjs jobs run hello_world name=Modelops --watch
 ```
 
-> The `modelops-cdk` supports a series of parameters in the form of `key=value` where the `value` must be a valid JSON serialized string.
+> The CLI supports a series of parameters in the form of `key=value` where the `value` must be a valid JSON serialized string.
 
 This command will yield an output like so:
 
@@ -456,10 +709,10 @@ This Pipeline Definition, when executed, will:
 2. Run it through the MeshOptimizer, optimizing its size and converting its output to `GLB`, `USD`, and `FBX`.
 3. Upload the optimized assets back to S3.
 
-You can run the `other` Pipeline Definition using the `modelops-cdk` CLI as shown:
+You can run the `other` Pipeline Definition using the CLI as shown:
 
 ```bash
-modelops-cdk job run other --watch --debug \
+./index.mjs jobs run other --watch --debug \
   prefix=assets \
   name=tt_remote_wow_flexi_drafter \
   bucket="$S3_BUCKET"

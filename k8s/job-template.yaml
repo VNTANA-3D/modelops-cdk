@@ -1,0 +1,61 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{ jobName }}"
+  namespace: "{{ namespace }}"
+  labels:
+    app: modelops
+    pipeline: "{{ pipelineName }}"
+    managed-by: modelops-cli
+  annotations:
+    modelops.vntana.com/pipeline-hash: "{{ pipelineHash }}"
+spec:
+  backoffLimit: {{ retryAttempts }}
+  ttlSecondsAfterFinished: 3600
+  activeDeadlineSeconds: 14400 # 4 hours max
+  template:
+    metadata:
+      labels:
+        app: modelops
+        pipeline: "{{ pipelineName }}"
+    spec:
+      serviceAccountName: modelops-job-sa
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 30
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      tolerations:
+        - key: "karpenter.sh/disruption"
+          operator: "Exists"
+          effect: "NoSchedule"
+      containers:
+        - name: modelops-handler
+          image: "{{{ image }}}:{{{ tag }}}"
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+          args:
+            - |
+              cat <<'PIPELINE_EOF' | /home/app/apps/handler/dist/index.js -i json --logger {{ logger }} {{ debugFlag }}
+              {{{ pipelineJson }}}
+              PIPELINE_EOF
+          env:
+            - name: AWS_REGION
+              value: "{{ region }}"
+          resources:
+            requests:
+              cpu: "{{ cpu }}"
+              memory: "{{ memory }}Gi"
+              ephemeral-storage: "{{ ephemeralStorage }}Gi"
+            limits:
+              cpu: "{{ cpu }}"
+              memory: "{{ memory }}Gi"
+              ephemeral-storage: "{{ ephemeralStorage }}Gi"
+          volumeMounts:
+            - name: work-dir
+              mountPath: /tmp
+      volumes:
+        - name: work-dir
+          emptyDir:
+            sizeLimit: "{{ ephemeralStorage }}Gi"

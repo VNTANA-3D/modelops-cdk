@@ -3,57 +3,32 @@ import * as dotenv from "dotenv";
 import { Table } from "console-table-printer";
 import dayjs from "dayjs";
 
-import { Shell } from "../lib/shell.mjs";
-import { FromAgo, JobsSummary } from "../lib/validators.mjs";
+import { FromAgo } from "../lib/validators.mjs";
+import { getBackend } from "./backends/index.mjs";
 
 export const program = new Command();
 
-async function getJobsSummaryList(
-  jobQueueName,
-  afterCreatedAt = dayjs().subtract(1, "day").valueOf(),
-  jobsSummaryList = [],
-) {
-  const $ = new Shell();
-
-  let jobs = {};
-  let list = [];
-  try {
-    const response = JSON.parse(
-      await $.run(
-        "aws",
-        "batch",
-        "list-jobs",
-        ...[
-          "--job-queue",
-          jobQueueName,
-          "--filter",
-          `'name="AFTER_CREATED_AT",values="${afterCreatedAt}"'`,
-          "--output",
-          "json",
-        ],
-      ),
-    );
-    jobs = JobsSummary.parse(response);
-
-    list = jobsSummaryList.concat(jobs.jobSummaryList);
-
-    if (jobs.nextToken) {
-      return await getJobsSummaryList(jobQueueName, jobStatus, list);
-    }
-  } catch (err) {
-    console.error(err);
-    process.exit(1);
-  }
-
-  return list;
-}
-
 program
   .description("List all jobs from a point in time.")
-  .option(
-    "-x, --stack-name <STACK_NAME>",
-    "The name of the CloudFormation Stack",
-    "ModelopsHandler",
+  .addOption(
+    new Option("-s, --stack-name <STACK_NAME>", "The name of the CloudFormation Stack")
+      .env("STACK_NAME")
+      .default("ModelopsHandler"),
+  )
+  .addOption(
+    new Option("-b, --backend <BACKEND>", "Compute backend to use.")
+      .env("COMPUTE_BACKEND")
+      .choices(["batch", "eks"])
+      .default("batch"),
+  )
+  .addOption(
+    new Option("--eks-namespace <NAMESPACE>", "EKS namespace for jobs.")
+      .env("EKS_NAMESPACE")
+      .default("modelops"),
+  )
+  .addOption(
+    new Option("--eks-kubeconfig <PATH>", "Path to kubeconfig file.")
+      .env("EKS_KUBECONFIG_PATH"),
   )
   .option(
     "-f, --from <TIME_AGO>",
@@ -63,12 +38,24 @@ program
   .addOption(
     new Option("-c, --config <CONFIG>", "Path to the configuration file.")
       .env("MODELOPS_CONFIG")
-      .default("./env"),
+      .default("./.env"),
   )
   .action(async (options) => {
+    // Load configuration from .env file (provides defaults)
     dotenv.config({ path: options.config });
 
-    const stackName = process.env.STACK_NAME || options.stackName;
+    // CLI arguments take precedence (Commander handles env fallback via .env())
+    const computeBackend = options.backend;
+    const stackName = options.stackName;
+
+    // Build backend config - CLI args already have env fallbacks via Commander
+    const backendConfig = {
+      eksNamespace: options.eksNamespace,
+      eksKubeconfigPath: options.eksKubeconfig || null,
+    };
+
+    const backend = getBackend(computeBackend, backendConfig);
+
     const jobQueueName = stackName + "JobQueue";
 
     const p = new Table({
@@ -140,11 +127,16 @@ program
       process.exit(2);
     }
 
-    const jobSummaryList = await getJobsSummaryList(
-      jobQueueName,
-      after.valueOf(),
-    );
+    try {
+      const { jobSummaryList } = await backend.listJobs({
+        jobQueueName,
+        afterCreatedAt: after.valueOf(),
+      });
 
-    p.addRows(jobSummaryList);
-    p.printTable();
+      p.addRows(jobSummaryList);
+      p.printTable();
+    } catch (err) {
+      console.error(err);
+      process.exit(1);
+    }
   });

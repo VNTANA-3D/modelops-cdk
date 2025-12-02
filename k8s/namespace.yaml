@@ -1,0 +1,20 @@
+# Note: These resources are created by the CDK stack (ModelopsEksStack)
+# This file is provided as a reference for the structure
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: modelops
+  labels:
+    app: modelops
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: modelops-job-sa
+  namespace: modelops
+  annotations:
+    # This annotation is set by CDK with the IRSA role ARN
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/ROLE_NAME"

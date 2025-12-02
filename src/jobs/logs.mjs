@@ -1,64 +1,25 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
+import * as dotenv from "dotenv";
 
-import { Shell } from "../lib/shell.mjs";
-import { Logs } from "../lib/validators.mjs";
-import { describe } from "./describe.mjs";
+import { getBackend } from "./backends/index.mjs";
 
 export const program = new Command();
 
-export async function logs(jobId) {
-  const $ = new Shell();
-
-  const { status, container } = await describe(jobId);
-
-  if (!container) {
-    console.error("Job container not found");
-    process.exit(1);
-  }
-
-  const { logStreamName } = container;
-
-  if (!logStreamName) {
-    console.error(`Job status is ${status}`);
-    process.exit(1);
+/**
+ * Get logs for a Job.
+ * @param {string} jobId - The Job unique identifier
+ * @param {object} backend - Optional backend instance
+ * @returns {Promise<void>}
+ */
+export async function logs(jobId, backend = null) {
+  if (!backend) {
+    // Default to batch backend for backward compatibility
+    const { BatchBackend } = await import("./backends/batch.mjs");
+    backend = new BatchBackend({});
   }
 
   try {
-    let nextForwardToken = null;
-    while (true) {
-      const logs = Logs.parse(
-        JSON.parse(
-          await $.run(
-            "aws",
-            "logs",
-            "get-log-events",
-            ...[
-              "--log-group-name",
-              "/custom/log/group",
-              "--log-stream-name",
-              logStreamName,
-              "--output",
-              "json",
-              ...(nextForwardToken ? [`--next-token`, nextForwardToken] : []),
-            ],
-          ),
-        ),
-      );
-
-      nextForwardToken = logs.nextForwardToken;
-
-      if (logs.events.length === 0) {
-        let { status } = await describe(jobId);
-
-        if (status != "RUNNING" && status != "STARTING") {
-          break;
-        }
-
-        continue;
-      }
-
-      console.log(logs.events.map((e) => e.message).join("\n"));
-    }
+    await backend.getLogs(jobId, { follow: true });
   } catch (err) {
     console.error(err);
     process.exit(1);
@@ -66,6 +27,42 @@ export async function logs(jobId) {
 }
 
 program
-  .description("Gets the details for a Job.")
+  .description("Gets the logs for a Job.")
   .argument("[JOB_ID]", "The Job unique identifier", process.env.JOB_ID)
-  .action(logs);
+  .addOption(
+    new Option("-b, --backend <BACKEND>", "Compute backend to use.")
+      .env("COMPUTE_BACKEND")
+      .choices(["batch", "eks"])
+      .default("batch"),
+  )
+  .addOption(
+    new Option("--eks-namespace <NAMESPACE>", "EKS namespace for jobs.")
+      .env("EKS_NAMESPACE")
+      .default("modelops"),
+  )
+  .addOption(
+    new Option("--eks-kubeconfig <PATH>", "Path to kubeconfig file.")
+      .env("EKS_KUBECONFIG_PATH"),
+  )
+  .addOption(
+    new Option("-c, --config <CONFIG>", "Path to the configuration file.")
+      .env("MODELOPS_CONFIG")
+      .default("./.env"),
+  )
+  .action(async (jobId, options) => {
+    // Load configuration from .env file (provides defaults)
+    dotenv.config({ path: options.config });
+
+    // CLI arguments take precedence (Commander handles env fallback via .env())
+    const computeBackend = options.backend;
+
+    // Build backend config - CLI args already have env fallbacks via Commander
+    const backendConfig = {
+      eksNamespace: options.eksNamespace,
+      eksKubeconfigPath: options.eksKubeconfig || null,
+    };
+
+    const backend = getBackend(computeBackend, backendConfig);
+
+    await logs(jobId, backend);
+  });

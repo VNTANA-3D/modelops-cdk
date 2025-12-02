@@ -1,48 +1,67 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
+import * as dotenv from "dotenv";
 
-import { Shell } from "../lib/shell.mjs";
-import { JobSummary, Jobs } from "../lib/validators.mjs";
+import { getBackend } from "./backends/index.mjs";
 
 export const program = new Command();
 
 /**
- * @typedef {Object} Job
- * @property {string} status
- * @property {Container} container
- */
-
-/**
  * Get the details for a Job.
  * @param {string} jobId - The Job unique identifier
- * @returns {Promise<JobSummary>} The Job details.
- * @returns {Promise<void>}
+ * @param {object} backend - Optional backend instance
+ * @returns {Promise<object>} The Job details.
  * @throws {Error}
  */
-export async function describe(jobId) {
-  const $ = new Shell();
-
-  return Jobs.parse(
-    JSON.parse(
-      await $.run(
-        "aws",
-        "batch",
-        "describe-jobs",
-        "--jobs",
-        jobId,
-        "--output",
-        "json",
-      ),
-    ),
-  ).jobs[0];
+export async function describe(jobId, backend = null) {
+  if (!backend) {
+    // Default to batch backend for backward compatibility
+    const { BatchBackend } = await import("./backends/batch.mjs");
+    backend = new BatchBackend({});
+  }
+  return backend.describeJob(jobId);
 }
 
 program
   .description("Gets the details for a Job.")
   .argument("[JOB_ID]", "The Job unique identifier", process.env.JOB_ID)
-  .action(async (jobId) => {
+  .addOption(
+    new Option("-b, --backend <BACKEND>", "Compute backend to use.")
+      .env("COMPUTE_BACKEND")
+      .choices(["batch", "eks"])
+      .default("batch"),
+  )
+  .addOption(
+    new Option("--eks-namespace <NAMESPACE>", "EKS namespace for jobs.")
+      .env("EKS_NAMESPACE")
+      .default("modelops"),
+  )
+  .addOption(
+    new Option("--eks-kubeconfig <PATH>", "Path to kubeconfig file.")
+      .env("EKS_KUBECONFIG_PATH"),
+  )
+  .addOption(
+    new Option("-c, --config <CONFIG>", "Path to the configuration file.")
+      .env("MODELOPS_CONFIG")
+      .default("./.env"),
+  )
+  .action(async (jobId, options) => {
+    // Load configuration from .env file (provides defaults)
+    dotenv.config({ path: options.config });
+
+    // CLI arguments take precedence (Commander handles env fallback via .env())
+    const computeBackend = options.backend;
+
+    // Build backend config - CLI args already have env fallbacks via Commander
+    const backendConfig = {
+      eksNamespace: options.eksNamespace,
+      eksKubeconfigPath: options.eksKubeconfig || null,
+    };
+
+    const backend = getBackend(computeBackend, backendConfig);
+
     let job = {};
     try {
-      job = await describe(jobId);
+      job = await backend.describeJob(jobId);
     } catch (err) {
       console.error(err);
       process.exit(1);

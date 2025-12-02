@@ -20,6 +20,7 @@
     "typescript": "~5.5.3"
   },
   "dependencies": {
+    "@aws-cdk/lambda-layer-kubectl-v30": "^2.0.4",
     "aws-cdk-lib": "2.149.0",
     "commander": "^12.1.0",
     "console-table-printer": "^2.12.1",
@@ -27,6 +28,7 @@
     "dayjs": "^1.11.12",
     "dedent": "^1.5.3",
     "dotenv": "^16.4.5",
+    "mustache": "^4.2.0",
     "source-map-support": "^0.5.21",
     "yaml": "^2.5.0",
     "zod": "^3.23.8"
