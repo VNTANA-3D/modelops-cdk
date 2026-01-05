@@ -717,3 +717,67 @@ You can run the `other` Pipeline Definition using the CLI as shown:
   name=tt_remote_wow_flexi_drafter \
   bucket="$S3_BUCKET"
 ```
+
+## SPDA (Spatial Data Management) Deployment
+
+The project includes a modified SPDA CloudFormation template (`spda-modified.yaml`) configured to use existing VPC infrastructure instead of creating a new VPC.
+
+### Prerequisites
+
+- Existing VPC with private subnets that have NAT Gateway egress
+- Subnets must be in OpenSearch Serverless supported AZs (us-east-1a, us-east-1c, or us-east-1d for us-east-1 region)
+- Route53 hosted zone (optional, for custom domain)
+
+### Deployment
+
+```bash
+aws cloudformation deploy \
+  --template-file spda-modified.yaml \
+  --stack-name SpatialDataManagement \
+  --parameter-overrides \
+    ExistingVpcId=<your-vpc-id> \
+    ExistingPrivateSubnet1Id=<subnet-in-supported-az> \
+    ExistingPrivateSubnet2Id=<subnet-in-different-supported-az> \
+    DeploymentMode=Dev \
+    PortalFullyQualifiedDomainName=<your-domain> \
+    PortalRoute53HostedZoneId=<your-hosted-zone-id> \
+  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+  --profile <your-profile> \
+  --region us-east-1
+```
+
+### Parameters
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `ExistingVpcId` | Yes | VPC ID to deploy into |
+| `ExistingPrivateSubnet1Id` | Yes | First private subnet (OpenSearch Serverless supported AZ) |
+| `ExistingPrivateSubnet2Id` | Yes | Second private subnet (different supported AZ) |
+| `DeploymentMode` | No | Dev or Prod (default: Dev) |
+| `PortalFullyQualifiedDomainName` | No | Custom domain for portal |
+| `PortalRoute53HostedZoneId` | No | Route53 hosted zone for custom domain |
+| `LogBucketRetentionDays` | No | Log retention in days (default: 90) |
+| `ExistingDeadlineFarmId` | No | Deadline Cloud Farm ID |
+| `ExistingDeadlineQueueId` | No | Deadline Cloud Queue ID |
+
+### OpenSearch Serverless AZ Compatibility
+
+OpenSearch Serverless VPC endpoints are only available in specific availability zones. Before deploying, verify your subnets are in supported AZs:
+
+```bash
+aws ec2 describe-vpc-endpoint-services \
+  --filters "Name=service-name,Values=*aoss*" \
+  --query 'ServiceDetails[*].AvailabilityZones' \
+  --region <your-region>
+```
+
+### Cleanup
+
+To delete the SPDA stack:
+
+```bash
+aws cloudformation delete-stack \
+  --stack-name SpatialDataManagement \
+  --profile <your-profile> \
+  --region us-east-1
+```
