@@ -20,8 +20,8 @@
     "typescript": "~5.5.3"
   },
   "dependencies": {
-    "@aws-cdk/lambda-layer-kubectl-v30": "^2.0.4",
-    "aws-cdk-lib": "2.149.0",
+    "@aws-cdk/lambda-layer-kubectl-v31": "^2.1.0",
+    "aws-cdk-lib": "^2.233.0",
     "commander": "^12.1.0",
     "console-table-printer": "^2.12.1",
     "constructs": "^10.0.0",
