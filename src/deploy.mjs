@@ -128,7 +128,9 @@ program
     const computeBackend = options.compute_backend || envs.COMPUTE_BACKEND || process.env.COMPUTE_BACKEND;
     const stackName = options.stack_name || envs.STACK_NAME || process.env.STACK_NAME || "ModelopsHandler";
 
-    if (computeBackend === "eks") {
+    if (computeBackend === "deadline") {
+      deployArgs.push(stackName + "Deadline");
+    } else if (computeBackend === "eks") {
       deployArgs.push(stackName + "Eks");
     } else {
       // batch (default)

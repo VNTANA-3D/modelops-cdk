@@ -56,7 +56,7 @@ program
   .addOption(
     new Option("-b, --backend <BACKEND>", "Compute backend to use.")
       .env("COMPUTE_BACKEND")
-      .choices(["batch", "eks"])
+      .choices(["batch", "eks", "deadline"])
       .default("batch"),
   )
   .addOption(
@@ -107,6 +107,16 @@ program
   .addOption(
     new Option("--eks-kubeconfig <PATH>", "Path to kubeconfig file.").env(
       "EKS_KUBECONFIG_PATH",
+    ),
+  )
+  .addOption(
+    new Option("--deadline-farm-id <FARM_ID>", "Deadline Cloud farm ID.").env(
+      "DEADLINE_FARM_ID",
+    ),
+  )
+  .addOption(
+    new Option("--deadline-queue-id <QUEUE_ID>", "Deadline Cloud queue ID.").env(
+      "DEADLINE_QUEUE_ID",
     ),
   )
   .option(
@@ -162,6 +172,8 @@ program
       jobRetryAttempts: parseInt(options.jobRetries, 10),
       eksNamespace: options.eksNamespace,
       eksKubeconfigPath: options.eksKubeconfig || null,
+      deadlineFarmId: options.deadlineFarmId || null,
+      deadlineQueueId: options.deadlineQueueId || null,
     };
 
     // Get backend
