@@ -16,16 +16,9 @@ const env = {
   region: config.region,
 };
 
-// Support "batch", "eks", or "both" for compute backend
-if (config.computeBackend === "both") {
-  new ModelopsOnAwsStack(app, config.stackName, {
-    env,
-    config,
-  });
-  new ModelopsEksStack(app, config.stackName + "Eks", {
-    env,
-    config,
-  });
+// Support "batch", "eks", or "deadline" for compute backend
+if (config.computeBackend === "deadline") {
+  throw new Error("Deadline Cloud backend is not yet implemented");
 } else if (config.computeBackend === "eks") {
   new ModelopsEksStack(app, config.stackName + "Eks", {
     env,

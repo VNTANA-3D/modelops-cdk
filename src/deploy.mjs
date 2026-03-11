@@ -34,8 +34,8 @@ program
   .addOption(
     new Option(
       "--compute_backend <string>",
-      "Compute backend: batch, eks, or both",
-    ).choices(["batch", "eks", "both"]),
+      "Compute backend: batch, eks, or deadline",
+    ).choices(["batch", "eks", "deadline"]),
   )
   .option("--use_default_vpc <string>", "Flag to use the `default` VPC.")
   .option("--vpc_id <string>", "Custom VPC Id (overrides `USE_DEFAULT_VPC`.)")
@@ -128,9 +128,7 @@ program
     const computeBackend = options.compute_backend || envs.COMPUTE_BACKEND || process.env.COMPUTE_BACKEND;
     const stackName = options.stack_name || envs.STACK_NAME || process.env.STACK_NAME || "ModelopsHandler";
 
-    if (computeBackend === "both") {
-      deployArgs.push("--all");
-    } else if (computeBackend === "eks") {
+    if (computeBackend === "eks") {
       deployArgs.push(stackName + "Eks");
     } else {
       // batch (default)
