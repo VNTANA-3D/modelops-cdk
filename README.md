@@ -10,11 +10,11 @@ This project showcases how to install the VNTANA ModelOps Handler in your own AW
 
 The project supports three compute backend configurations:
 
-| Backend | Description |
-| ------- | ----------- |
-| `batch` | AWS Batch with Fargate (default). Serverless, pay-per-use, simpler setup. |
-| `eks`   | Amazon EKS with Karpenter autoscaling. Kubernetes-native, scale-to-zero, more control. |
-| `both`  | Deploy both stacks simultaneously for hybrid workloads. |
+| Backend    | Description |
+| ---------- | ----------- |
+| `batch`    | AWS Batch with Fargate (default). Serverless, pay-per-use, simpler setup. |
+| `eks`      | Amazon EKS with Karpenter autoscaling. Kubernetes-native, scale-to-zero, more control. |
+| `deadline` | AWS Deadline Cloud. Service-managed fleet, auto-scaling, OpenJD job templates. |
 
 ### AWS Batch/Fargate (Default)
 
@@ -29,6 +29,13 @@ The project supports three compute backend configurations:
 - **Scale-to-zero**: Karpenter automatically provisions/deprovisions nodes
 - **Flexible**: Custom node types, spot instances, advanced scheduling
 - **Best for**: High-volume workloads, K8s integration, advanced requirements
+
+### AWS Deadline Cloud
+
+- **Service-managed**: AWS manages the fleet infrastructure
+- **Auto-scaling**: Configurable min/max worker count with scale-to-zero
+- **OpenJD**: Uses Open Job Description templates for job submission
+- **Best for**: Render farms, large-scale 3D processing, Deadline Cloud integration
 
 A `NodeJS`-based CLI is also included to simplify the process of interacting with the project, exposing commands to build the infrastructure, and run and monitor custom jobs.
 
@@ -89,7 +96,7 @@ This table lists all the available options:
 | `STACK_NAME`              | `VntanaModelOpsHandler` | Stack name.                                                              |
 | `AWS_ACCOUNT_ID`          | `null`                  | AWS Account ID.                                                          |
 | `AWS_REGION`              | `us-east-1`             | AWS Region.                                                              |
-| `COMPUTE_BACKEND`         | `batch`                 | Compute backend: `batch`, `eks`, or `both`.                              |
+| `COMPUTE_BACKEND`         | `batch`                 | Compute backend: `batch`, `eks`, or `deadline`.                          |
 
 ### VPC & Network Configuration
 
@@ -131,6 +138,19 @@ This table lists all the available options:
 | `EKS_VPC_CIDR`            | `10.0.0.0/16`           | CIDR block for new EKS VPC.                                              |
 | `EKS_SUBNET_TYPE`         | `private`               | Subnet type for EKS: `private`, `public`, or `both`.                     |
 
+### Deadline Cloud-Specific Configuration
+
+| Name                      | Default                 | Description                                                              |
+| ------------------------- | ----------------------- | ------------------------------------------------------------------------ |
+| `DEADLINE_FARM_ID`        | `null`                  | Existing Deadline Cloud farm ID (creates new if absent).                 |
+| `DEADLINE_FARM_NAME`      | `null`                  | Name for new farm (auto-generated from stack name if absent).            |
+| `DEADLINE_QUEUE_ID`       | `null`                  | Existing Deadline Cloud queue ID (creates new if absent).                |
+| `DEADLINE_FLEET_ID`       | `null`                  | Existing Deadline Cloud fleet ID (creates new if absent).                |
+| `DEADLINE_FLEET_MIN`      | `0`                     | Minimum workers for fleet auto-scaling.                                  |
+| `DEADLINE_FLEET_MAX`      | `10`                    | Maximum workers for fleet auto-scaling.                                  |
+
+> **Note:** `AWS_ACCOUNT_ID` is required when using `COMPUTE_BACKEND=deadline`.
+
 > You can also override these variables through environment variables or as options when calling the `./index.mjs deploy` command.
 
 Once you update your `.env` file with all the required configuration you are ready to deploy. If this is the first time you'll be using the AWS CDK on your account, you are going to need to bootstrap it. This can be easily done through the `deploy` command by passing the `--bootstrap` flag.
@@ -160,12 +180,17 @@ Once you update your `.env` file with all the required configuration you are rea
   --eks_subnet_ids "subnet-abc123,subnet-def456,subnet-ghi789"
 ```
 
-**Deploy both stacks with separate subnets:**
+**Deploy Deadline Cloud stack:**
 
 ```bash
-./index.mjs deploy --compute_backend both \
-  --batch_subnet_ids "subnet-111,subnet-222" \
-  --eks_subnet_ids "subnet-333,subnet-444,subnet-555"
+./index.mjs deploy --compute_backend deadline
+```
+
+**Deploy Deadline Cloud with an existing farm:**
+
+```bash
+./index.mjs deploy --compute_backend deadline \
+  --deadline_farm_id "farm-abc123"
 ```
 
 **Deploy EKS with a new VPC:**
@@ -254,7 +279,7 @@ kubectl get namespaces
 
 The EKS stack deploys the following components:
 
-- **EKS Cluster**: Kubernetes control plane (v1.30)
+- **EKS Cluster**: Kubernetes control plane (v1.32)
 - **Bootstrap Node Group**: A small `t3.small` node for system components (Karpenter)
 - **Karpenter**: Cluster autoscaler that provisions nodes on-demand and scales to zero
 - **NodePool & EC2NodeClass**: Karpenter configuration for job nodes
@@ -262,6 +287,37 @@ The EKS stack deploys the following components:
 - **Namespace**: Dedicated `modelops` namespace for jobs
 
 When a job is submitted, Karpenter automatically provisions an appropriately-sized node, runs the job, and deprovisions the node when idle.
+
+## Deadline Cloud Architecture
+
+The Deadline Cloud stack deploys the following resources (each can reference an existing resource via its ID, or be created automatically):
+
+- **Farm**: Top-level Deadline Cloud container for queues and fleets
+- **Queue**: Holds submitted jobs, linked to S3 bucket for job attachments
+- **Fleet**: Service-managed EC2 fleet with configurable auto-scaling (min 0, max 10 by default)
+- **Queue-Fleet Association**: Wires the queue to the fleet
+- **Queue Role**: IAM role for S3 job attachment access
+- **Fleet Role**: IAM role for CloudWatch logging, S3 access, and ECR image pull
+- **Worker Configuration Script**: Boot script that installs Docker, authenticates to ECR, and pulls the handler image
+
+Workers use the `job-user` Deadline Cloud user. Jobs are submitted as OpenJD templates (`deadline/job-template.yaml`) that pipe pipeline JSON through the same container interface used by all backends.
+
+### Using Existing Deadline Cloud Resources
+
+You can reference existing resources instead of creating new ones:
+
+```bash
+# Use an existing farm and queue, create a new fleet
+COMPUTE_BACKEND=deadline
+DEADLINE_FARM_ID=farm-abc123
+DEADLINE_QUEUE_ID=queue-def456
+
+# Use all existing resources
+COMPUTE_BACKEND=deadline
+DEADLINE_FARM_ID=farm-abc123
+DEADLINE_QUEUE_ID=queue-def456
+DEADLINE_FLEET_ID=fleet-ghi789
+```
 
 ### Use the `cdk` CLI directly
 
@@ -320,7 +376,7 @@ You can also change the `logger` configuration to JSON if you prefer this format
 
 ### Running Jobs on Different Backends
 
-By default, the CLI uses the Batch backend. To run jobs on EKS, use the `--backend` option:
+By default, the CLI uses the Batch backend. To run jobs on a different backend, use the `--backend` option:
 
 ```bash
 # Run on AWS Batch (default)
@@ -328,13 +384,36 @@ By default, the CLI uses the Batch backend. To run jobs on EKS, use the `--backe
 
 # Run on EKS
 ./index.mjs jobs run hello_world --backend eks
+
+# Run on Deadline Cloud
+./index.mjs jobs run hello_world --backend deadline \
+  --deadline-farm-id "farm-abc123" \
+  --deadline-queue-id "queue-def456"
 ```
 
-You can also set the backend via environment variable:
+You can also set the backend and Deadline IDs via environment variables:
 
 ```bash
-export COMPUTE_BACKEND=eks
+export COMPUTE_BACKEND=deadline
+export DEADLINE_FARM_ID=farm-abc123
+export DEADLINE_QUEUE_ID=queue-def456
 ./index.mjs jobs run hello_world
+```
+
+All job commands (`list`, `describe`, `logs`) support the same `--backend` and `--deadline-*` options:
+
+```bash
+./index.mjs jobs list --backend deadline \
+  --deadline-farm-id "farm-abc123" \
+  --deadline-queue-id "queue-def456"
+
+./index.mjs jobs describe "$JOB_ID" --backend deadline \
+  --deadline-farm-id "farm-abc123" \
+  --deadline-queue-id "queue-def456"
+
+./index.mjs jobs logs "$JOB_ID" --backend deadline \
+  --deadline-farm-id "farm-abc123" \
+  --deadline-queue-id "queue-def456"
 ```
 
 ## Run a Job on EKS with kubectl
