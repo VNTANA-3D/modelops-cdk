@@ -7,18 +7,18 @@ import type { ConfigPropsT } from "./config";
 import { PolicyDocument } from "./validators";
 import { renderWorkerScript, buildEcrRepoArn } from "./deadline-utils";
 
-type ModelopsDeadlineStackPropsT = StackProps & {
+type ModelopsSpdaStackPropsT = StackProps & {
   config: Readonly<ConfigPropsT>;
 };
 
-export class ModelopsDeadlineStack extends cdk.Stack {
+export class ModelopsSpdaStack extends cdk.Stack {
   #name: string;
   #config: ConfigPropsT;
 
   constructor(
     scope: Construct,
     id: string,
-    props?: ModelopsDeadlineStackPropsT,
+    props?: ModelopsSpdaStackPropsT,
   ) {
     super(scope, id, props);
 
@@ -34,18 +34,17 @@ export class ModelopsDeadlineStack extends cdk.Stack {
 
   private init() {
     if (!this.#config.account) {
-      throw new Error("AWS_ACCOUNT_ID is required for the Deadline Cloud backend");
+      throw new Error("AWS_ACCOUNT_ID is required for the SPDA backend");
     }
 
-    const s3Bucket = this.getS3Bucket();
+    const farmId = this.#config.deadlineFarmId!;
     const logGroup = this.getLogGroup();
-
-    const farmId = this.getFarmId();
-    const queueRole = this.getQueueRole(s3Bucket);
-    const fleetRole = this.getFleetRole(s3Bucket, logGroup);
-    const queueId = this.getQueueId(farmId, s3Bucket, queueRole);
+    const queueRole = this.getQueueRole();
+    const fleetRole = this.getFleetRole(logGroup);
+    const queueId = this.getQueueId(farmId, queueRole);
     const fleetId = this.getFleetId(farmId, fleetRole);
     this.createQueueFleetAssociation(farmId, queueId, fleetId);
+    const proxyRole = this.getProxyRole();
 
     // Stack outputs
     new cdk.CfnOutput(this, this.#name + "FarmId", {
@@ -68,6 +67,10 @@ export class ModelopsDeadlineStack extends cdk.Stack {
       value: fleetRole.roleArn,
     });
 
+    new cdk.CfnOutput(this, this.#name + "ProxyRoleArn", {
+      value: proxyRole.roleArn,
+    });
+
     new cdk.CfnOutput(this, this.#name + "LogGroupName", {
       value: logGroup.logGroupName,
     });
@@ -75,107 +78,46 @@ export class ModelopsDeadlineStack extends cdk.Stack {
     new cdk.CfnOutput(this, this.#name + "LogGroupArn", {
       value: logGroup.logGroupArn,
     });
-
-    if (s3Bucket !== null) {
-      new cdk.CfnOutput(this, this.#name + "S3BucketName", {
-        value: s3Bucket.bucketName,
-      });
-      new cdk.CfnOutput(this, this.#name + "S3BucketArn", {
-        value: s3Bucket.bucketArn,
-      });
-    }
   }
 
   private getLogGroup() {
     const logGroupName = this.#name + "LogGroup";
     return new cdk.aws_logs.LogGroup(this, logGroupName, {
       logGroupName:
-        this.#config.logGroupName || "/deadline/modelops/jobs",
+        this.#config.logGroupName || "/deadline/modelops/spda/jobs",
       retention: cdk.aws_logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
   }
 
-  private getS3Bucket() {
-    if (this.#config.s3BucketName === null) return null;
-
-    return new cdk.aws_s3.Bucket(this, this.#name + "S3Bucket", {
-      bucketName: this.#config.s3BucketName,
-    });
-  }
-
   /**
-   * Returns the farm ID -- either from config (existing farm) or by
-   * creating a new CfnFarm resource.
-   */
-  private getFarmId(): string {
-    if (this.#config.deadlineFarmId) {
-      return this.#config.deadlineFarmId;
-    }
-
-    const farmName =
-      this.#config.deadlineFarmName || `${this.#name}-farm`;
-
-    const farm = new cdk.aws_deadline.CfnFarm(
-      this,
-      this.#name + "Farm",
-      {
-        displayName: farmName,
-        description: `Deadline Cloud farm for ${this.#name}`,
-      },
-    );
-
-    return farm.attrFarmId;
-  }
-
-  /**
-   * Returns the queue ID -- either from config (existing queue) or by
-   * creating a new CfnQueue resource linked to the S3 bucket.
+   * Creates the queue — no jobAttachmentSettings since SPDA manages its own
+   * asset bucket.
    */
   private getQueueId(
     farmId: string,
-    s3Bucket: cdk.aws_s3.Bucket | null,
     queueRole: cdk.aws_iam.Role,
   ): string {
-    if (this.#config.deadlineQueueId) {
-      return this.#config.deadlineQueueId;
-    }
-
-    const queueProps: cdk.aws_deadline.CfnQueueProps = {
-      displayName: `${this.#name}-queue`,
-      farmId,
-      roleArn: queueRole.roleArn,
-      ...(s3Bucket
-        ? {
-            jobAttachmentSettings: {
-              s3BucketName: s3Bucket.bucketName,
-              rootPrefix: "job-attachments",
-            },
-          }
-        : {}),
-    };
-
     const queue = new cdk.aws_deadline.CfnQueue(
       this,
       this.#name + "Queue",
-      queueProps,
+      {
+        displayName: `${this.#name}-spda-queue`,
+        farmId,
+        roleArn: queueRole.roleArn,
+      },
     );
 
     return queue.attrQueueId;
   }
 
   /**
-   * Returns the fleet ID -- either from config (existing fleet) or by
-   * creating a new service-managed CfnFleet.
+   * Creates the fleet — always creates, no skip logic.
    */
   private getFleetId(
     farmId: string,
     fleetRole: cdk.aws_iam.Role,
   ): string {
-    if (this.#config.deadlineFleetId) {
-      return this.#config.deadlineFleetId;
-    }
-
     const workerScript = renderWorkerScript({
       region: this.#config.region,
       accountId: this.#config.account!,
@@ -187,7 +129,7 @@ export class ModelopsDeadlineStack extends cdk.Stack {
       this,
       this.#name + "Fleet",
       {
-        displayName: `${this.#name}-fleet`,
+        displayName: `${this.#name}-spda-fleet`,
         farmId,
         roleArn: fleetRole.roleArn,
         maxWorkerCount: this.#config.deadlineFleetMax,
@@ -217,10 +159,6 @@ export class ModelopsDeadlineStack extends cdk.Stack {
     return fleet.attrFleetId;
   }
 
-  /**
-   * Creates the queue-fleet association so the queue routes work to the
-   * fleet.
-   */
   private createQueueFleetAssociation(
     farmId: string,
     queueId: string,
@@ -238,9 +176,9 @@ export class ModelopsDeadlineStack extends cdk.Stack {
   }
 
   /**
-   * IAM role assumed by the queue -- grants S3 access for job attachments.
+   * IAM role assumed by the queue — grants S3 access to SPDA bucket ARNs.
    */
-  private getQueueRole(s3Bucket: cdk.aws_s3.Bucket | null) {
+  private getQueueRole() {
     const role = new cdk.aws_iam.Role(
       this,
       this.#name + "QueueRole",
@@ -252,26 +190,23 @@ export class ModelopsDeadlineStack extends cdk.Stack {
       },
     );
 
-    if (s3Bucket) {
-      role.addToPolicy(
-        new cdk.aws_iam.PolicyStatement({
-          actions: ["s3:GetObject", "s3:PutObject", "s3:ListBucket", "s3:DeleteObject"],
-          resources: [s3Bucket.bucketArn, `${s3Bucket.bucketArn}/*`],
-        }),
-      );
-    }
+    const bucketArns = this.#config.spdaS3BucketArns!;
+    const bucketResources = bucketArns.flatMap((arn) => [arn, `${arn}/*`]);
+    role.addToPolicy(
+      new cdk.aws_iam.PolicyStatement({
+        actions: ["s3:GetObject", "s3:PutObject", "s3:ListBucket", "s3:DeleteObject"],
+        resources: bucketResources,
+      }),
+    );
 
     return role;
   }
 
   /**
-   * IAM role assumed by fleet workers -- grants CloudWatch logging, S3
-   * access, and ECR pull permissions (private repo + Marketplace).
+   * IAM role assumed by fleet workers — grants CloudWatch logging, S3 access
+   * to SPDA buckets, ECR pull, and Marketplace metering.
    */
-  private getFleetRole(
-    s3Bucket: cdk.aws_s3.Bucket | null,
-    logGroup: cdk.aws_logs.LogGroup,
-  ) {
+  private getFleetRole(logGroup: cdk.aws_logs.LogGroup) {
     const role = new cdk.aws_iam.Role(
       this,
       this.#name + "FleetRole",
@@ -294,15 +229,15 @@ export class ModelopsDeadlineStack extends cdk.Stack {
       }),
     );
 
-    // S3 access
-    if (s3Bucket) {
-      role.addToPolicy(
-        new cdk.aws_iam.PolicyStatement({
-          actions: ["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
-          resources: [s3Bucket.bucketArn, `${s3Bucket.bucketArn}/*`],
-        }),
-      );
-    }
+    // S3 access to SPDA buckets
+    const bucketArns = this.#config.spdaS3BucketArns!;
+    const bucketResources = bucketArns.flatMap((arn) => [arn, `${arn}/*`]);
+    role.addToPolicy(
+      new cdk.aws_iam.PolicyStatement({
+        actions: ["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
+        resources: bucketResources,
+      }),
+    );
 
     // ECR -- account-wide auth token
     role.addToPolicy(
@@ -360,4 +295,31 @@ export class ModelopsDeadlineStack extends cdk.Stack {
     return role;
   }
 
+  /**
+   * Proxy role that SPDA's Connector Lambda assumes to submit Deadline jobs
+   * to this queue.
+   */
+  private getProxyRole() {
+    const trustPrincipal = this.#config.spdaRoleArn
+      ? new cdk.aws_iam.ArnPrincipal(this.#config.spdaRoleArn)
+      : new cdk.aws_iam.AccountRootPrincipal();
+
+    const role = new cdk.aws_iam.Role(
+      this,
+      this.#name + "ProxyRole",
+      {
+        roleName: "SpatialDataManagementContentDerivation-ModelOps",
+        assumedBy: trustPrincipal,
+      },
+    );
+
+    role.addToPolicy(
+      new cdk.aws_iam.PolicyStatement({
+        actions: ["deadline:*"],
+        resources: ["*"],
+      }),
+    );
+
+    return role;
+  }
 }

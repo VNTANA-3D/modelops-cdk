@@ -11,7 +11,7 @@ export const ConfigProps = z.object({
   region: z.string().default("us-east-1").describe("AWS Region"),
   // Compute Backend
   computeBackend: z
-    .enum(["batch", "eks", "deadline"])
+    .enum(["batch", "eks", "deadline", "spda"])
     .optional()
     .default("batch")
     .describe("Compute backend: batch (AWS Batch/Fargate), eks (EKS), or deadline (AWS Deadline Cloud)"),
@@ -195,6 +195,37 @@ export const ConfigProps = z.object({
     .optional()
     .default(10)
     .describe("Max workers for Deadline Cloud fleet auto-scaling"),
+  // SPDA-specific options
+  spdaS3BucketArns: z
+    .array(z.string())
+    .optional()
+    .nullable()
+    .default(null)
+    .describe("S3 bucket ARNs for SPDA asset access"),
+  spdaRoleArn: z
+    .string()
+    .optional()
+    .nullable()
+    .default(null)
+    .transform((val) => (val === "" ? null : val))
+    .describe("ARN of the SPDA role that will assume the proxy role"),
+}).superRefine((data, ctx) => {
+  if (data.computeBackend === "spda") {
+    if (!data.deadlineFarmId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "DEADLINE_FARM_ID is required when COMPUTE_BACKEND=spda",
+        path: ["deadlineFarmId"],
+      });
+    }
+    if (!data.spdaS3BucketArns || data.spdaS3BucketArns.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "SPDA_S3_BUCKET_ARNS is required when COMPUTE_BACKEND=spda",
+        path: ["spdaS3BucketArns"],
+      });
+    }
+  }
 });
 
 export type ConfigPropsT = z.infer<typeof ConfigProps>;
@@ -268,6 +299,11 @@ export function getConfig(customDotEnvPath: string = "") {
     deadlineFleetMax: process.env.DEADLINE_FLEET_MAX
       ? parseInt(process.env.DEADLINE_FLEET_MAX, 10)
       : undefined,
+    /// SPDA
+    spdaS3BucketArns: process.env.SPDA_S3_BUCKET_ARNS
+      ? process.env.SPDA_S3_BUCKET_ARNS.split(",")
+      : undefined,
+    spdaRoleArn: process.env.SPDA_ROLE_ARN,
   });
 }
 

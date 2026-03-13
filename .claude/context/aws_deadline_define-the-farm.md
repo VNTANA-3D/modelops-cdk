@@ -1,0 +1,15 @@
+
+  Back on the Deadline Cloud console, complete the following steps to define the farm details.                                                                                                                                                    
+                                                                                                                                                                                                                                                  
+  1. In **Farm details**, add a **Name** for the farm.                                                                                                                                                                                            
+  2. For **Description**, enter the farm description. A description can help you identify your farm's purpose.                                                                                                                                    
+  3. Create a group and add uses for your farm. After you set up your farm, you can use the Deadline Cloud management console to add or change groups and users.                                                                                  
+  4. (Optional) Choose **Additional farm settings**.                                                                                                                                                                                              
+      1. (Optional) By default, your data is encrypted with a key that AWS owns and manages for your security. You can choose **Customize encryption settings (advanced)** to use an existing key or to create a new one that you manage.If       
+      you choose to customize encryption settings using the checkbox, enter a AWS KMS ARN, or create a new AWS KMS by choosing **Create new KMS key**.                                                                                            
+      2. (Optional) Choose **Add new tag** to add one or more tags to your farm.                                                                                                                                                                  
+  5. Choose one of the following options:                                                                                                                                                                                                         
+      • Select **Skip to Review and Create** to  review and create your farm /review-and-create.html.                                                                                                                                             
+      • Select **Next** to proceed to additional, optional steps.                                                                                                                                                                                 
+                                                                                                                                                                                                                                                  
+

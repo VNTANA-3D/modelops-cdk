@@ -10,3 +10,5 @@ cdk.out
 # Custom
 .env
 .envrc
+.local
+.claude/settings.local.json

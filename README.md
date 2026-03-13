@@ -15,6 +15,7 @@ The project supports three compute backend configurations:
 | `batch`    | AWS Batch with Fargate (default). Serverless, pay-per-use, simpler setup. |
 | `eks`      | Amazon EKS with Karpenter autoscaling. Kubernetes-native, scale-to-zero, more control. |
 | `deadline` | AWS Deadline Cloud. Service-managed fleet, auto-scaling, OpenJD job templates. |
+| `spda`     | SPDA integration. Reuses an existing SPDA Farm, creates isolated Queue/Fleet for ModelOps. |
 
 ### AWS Batch/Fargate (Default)
 
@@ -36,6 +37,14 @@ The project supports three compute backend configurations:
 - **Auto-scaling**: Configurable min/max worker count with scale-to-zero
 - **OpenJD**: Uses Open Job Description templates for job submission
 - **Best for**: Render farms, large-scale 3D processing, Deadline Cloud integration
+
+### SPDA (Spatial Data Management on AWS)
+
+- **Farm reuse**: Connects to an existing SPDA Deadline Cloud Farm
+- **Isolated resources**: Creates its own Queue, Fleet, and IAM roles for ModelOps jobs
+- **Proxy role**: Creates an IAM role that SPDA's Connector Lambda assumes to submit jobs
+- **No S3 bucket**: Uses SPDA-managed bucket ARNs — no new bucket created
+- **Best for**: Organizations running SPDA that want to add ModelOps 3D processing to their pipeline
 
 A `NodeJS`-based CLI is also included to simplify the process of interacting with the project, exposing commands to build the infrastructure, and run and monitor custom jobs.
 
@@ -96,7 +105,7 @@ This table lists all the available options:
 | `STACK_NAME`              | `VntanaModelOpsHandler` | Stack name.                                                              |
 | `AWS_ACCOUNT_ID`          | `null`                  | AWS Account ID.                                                          |
 | `AWS_REGION`              | `us-east-1`             | AWS Region.                                                              |
-| `COMPUTE_BACKEND`         | `batch`                 | Compute backend: `batch`, `eks`, or `deadline`.                          |
+| `COMPUTE_BACKEND`         | `batch`                 | Compute backend: `batch`, `eks`, `deadline`, or `spda`.                  |
 
 ### VPC & Network Configuration
 
@@ -149,7 +158,17 @@ This table lists all the available options:
 | `DEADLINE_FLEET_MIN`      | `0`                     | Minimum workers for fleet auto-scaling.                                  |
 | `DEADLINE_FLEET_MAX`      | `10`                    | Maximum workers for fleet auto-scaling.                                  |
 
-> **Note:** `AWS_ACCOUNT_ID` is required when using `COMPUTE_BACKEND=deadline`.
+### SPDA-Specific Configuration
+
+| Name                      | Default                 | Description                                                              |
+| ------------------------- | ----------------------- | ------------------------------------------------------------------------ |
+| `DEADLINE_FARM_ID`        | `null`                  | Existing SPDA Deadline Cloud farm ID (**required**).                     |
+| `SPDA_S3_BUCKET_ARNS`     | `null`                  | Comma-separated S3 bucket ARNs for SPDA asset access (**required**).    |
+| `SPDA_ROLE_ARN`           | `null`                  | ARN of the SPDA role that assumes the proxy role (defaults to account root). |
+| `DEADLINE_FLEET_MIN`      | `0`                     | Minimum workers for fleet auto-scaling.                                  |
+| `DEADLINE_FLEET_MAX`      | `10`                    | Maximum workers for fleet auto-scaling.                                  |
+
+> **Note:** `AWS_ACCOUNT_ID` is required when using `COMPUTE_BACKEND=deadline` or `COMPUTE_BACKEND=spda`.
 
 > You can also override these variables through environment variables or as options when calling the `./index.mjs deploy` command.
 
@@ -191,6 +210,23 @@ Once you update your `.env` file with all the required configuration you are rea
 ```bash
 ./index.mjs deploy --compute_backend deadline \
   --deadline_farm_id "farm-abc123"
+```
+
+**Deploy SPDA backend:**
+
+```bash
+./index.mjs deploy --compute_backend spda \
+  --deadline_farm_id "farm-cee1b7e4af5549be8116bfa7e51f134d" \
+  --spda_s3_bucket_arns "arn:aws:s3:::spatialdatamanagement-ass-assetencrypteds3encrypte-b40cky4znngy"
+```
+
+**Deploy SPDA with a custom proxy role trust:**
+
+```bash
+./index.mjs deploy --compute_backend spda \
+  --deadline_farm_id "farm-cee1b7e4af5549be8116bfa7e51f134d" \
+  --spda_s3_bucket_arns "arn:aws:s3:::spatialdatamanagement-ass-assetencrypteds3encrypte-b40cky4znngy" \
+  --spda_role_arn "arn:aws:iam::263408322201:role/SpdaConnectorLambdaRole"
 ```
 
 **Deploy EKS with a new VPC:**
@@ -301,6 +337,37 @@ The Deadline Cloud stack deploys the following resources (each can reference an 
 - **Worker Configuration Script**: Boot script that installs Docker, authenticates to ECR, and pulls the handler image
 
 Workers use the `job-user` Deadline Cloud user. Jobs are submitted as OpenJD templates (`deadline/job-template.yaml`) that pipe pipeline JSON through the same container interface used by all backends.
+
+## SPDA Backend Architecture
+
+The SPDA backend integrates ModelOps with an existing [Spatial Data Management on AWS](https://aws.amazon.com/solutions/implementations/spatial-data-management-on-aws/) deployment. Instead of creating its own Farm, it reuses SPDA's Farm and creates isolated resources for ModelOps job routing.
+
+### Resources Created
+
+- **Queue**: Dedicated ModelOps queue on the existing SPDA Farm (no `jobAttachmentSettings` — assets are accessed via S3 role permissions)
+- **Fleet**: Service-managed EC2 fleet with Docker worker boot script, same as the Deadline backend
+- **Queue-Fleet Association**: Wires the queue to the fleet
+- **Queue Role**: IAM role with S3 access to SPDA bucket ARNs
+- **Fleet Role**: IAM role for CloudWatch logging, S3 access, ECR image pull, and Marketplace metering
+- **Proxy Role**: Fixed-name IAM role (`SpatialDataManagementContentDerivation-ModelOps`) that SPDA's Connector Lambda assumes to submit Deadline jobs to the ModelOps queue
+- **Log Group**: CloudWatch log group for job output
+
+### How It Works
+
+1. SPDA's Connector Lambda assumes the proxy role via `sts:AssumeRole`
+2. Using the proxy role, it submits a Deadline Cloud job to the ModelOps queue
+3. The fleet picks up the job, provisions an EC2 worker, and runs the ModelOps handler container
+4. The worker accesses assets in SPDA's S3 bucket via the fleet role's S3 permissions
+
+### Proxy Role Trust
+
+By default, the proxy role trusts the account root principal. To restrict it to a specific SPDA role, set `SPDA_ROLE_ARN`:
+
+```bash
+SPDA_ROLE_ARN=arn:aws:iam::263408322201:role/SpdaConnectorLambdaRole
+```
+
+> **Note:** The proxy role name `SpatialDataManagementContentDerivation-ModelOps` is fixed per account. Only one SPDA backend deployment is supported per AWS account.
 
 ### Using Existing Deadline Cloud Resources
 

@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an AWS CDK TypeScript project that deploys VNTANA ModelOps infrastructure for processing 3D assets. It supports two compute backends:
+This is an AWS CDK TypeScript project that deploys VNTANA ModelOps infrastructure for processing 3D assets. It supports multiple compute backends:
 - **AWS Batch with Fargate** - Original serverless container execution
 - **EKS with Karpenter** - Kubernetes-based execution with autoscaling
+- **Deadline Cloud** - AWS Deadline Cloud with own Farm/Queue/Fleet
+- **SPDA** - Reuses an existing SPDA Farm, creates isolated Queue/Fleet/Proxy role
 
 ## Commands
 
@@ -44,7 +46,7 @@ npx cdk deploy --app 'npx ts-node --prefer-ts-exts bin/modelops-handler.ts'
 ## Architecture
 
 ### Compute Backends
-The project supports two backends controlled by `COMPUTE_BACKEND` env var:
+The project supports four backends controlled by `COMPUTE_BACKEND` env var:
 
 **AWS Batch (`COMPUTE_BACKEND=batch`)**
 - `lib/modelops-handler.ts` - Main Batch/Fargate stack
@@ -59,8 +61,19 @@ The project supports two backends controlled by `COMPUTE_BACKEND` env var:
 - c5.4xlarge nodes with scale-to-zero via Karpenter
 - Bootstrap node group (t3.small) for system workloads
 
+**Deadline Cloud (`COMPUTE_BACKEND=deadline`)**
+- `lib/modelops-deadline-stack.ts` - Deadline Cloud stack with Farm/Queue/Fleet
+- `lib/deadline-utils.ts` - Shared pure functions (`renderWorkerScript`, `buildEcrRepoArn`)
+- Service-managed EC2 fleet with Docker worker boot script
+
+**SPDA (`COMPUTE_BACKEND=spda`)**
+- `lib/modelops-spda-stack.ts` - Reuses existing SPDA Farm, creates own Queue/Fleet
+- Creates proxy IAM role (`SpatialDataManagementContentDerivation-ModelOps`) for SPDA Lambda
+- No S3 bucket creation — uses SPDA-managed bucket ARNs from config
+- No `jobAttachmentSettings` on queue — assets accessed via role S3 permissions
+
 ### CDK Infrastructure (TypeScript)
-- `bin/modelops-handler.ts` - CDK app entry point, conditionally creates Batch or EKS stack
+- `bin/modelops-handler.ts` - CDK app entry point, conditionally creates Batch, EKS, Deadline, or SPDA stack
 - `lib/config.ts` - Configuration schema using Zod, loads from `.env` files
 - `lib/validators.ts` - IAM policy document validators
 
@@ -86,7 +99,7 @@ Configuration via `.env` file or environment variables.
 ### Common Settings
 - `STACK_NAME` - CloudFormation stack name
 - `AWS_ACCOUNT_ID`, `AWS_REGION` - Target AWS account
-- `COMPUTE_BACKEND` - `batch` or `eks`
+- `COMPUTE_BACKEND` - `batch`, `eks`, `deadline`, or `spda`
 - `VPC_ID` or `USE_DEFAULT_VPC` - Network configuration
 - `JOB_MEMORY`, `JOB_CPU`, `JOB_EPHEMERAL_STORAGE` - Job resources
 - `JOB_POLICY_FILE` - Path to custom IAM policy
@@ -99,12 +112,25 @@ Configuration via `.env` file or environment variables.
 - `EKS_NODE_INSTANCE_TYPE` - Node instance type (default: c5.4xlarge)
 - `EKS_KUBECONFIG_PATH` - Path to kubeconfig (optional)
 
+### SPDA-Specific Settings
+- `DEADLINE_FARM_ID` - Existing SPDA Farm ID (required for `spda` backend)
+- `SPDA_S3_BUCKET_ARNS` - Comma-separated S3 bucket ARNs for asset access (required for `spda` backend)
+- `SPDA_ROLE_ARN` - ARN of the SPDA role that assumes the proxy role (optional, defaults to account root trust)
+
 ### Example EKS Configuration
 ```bash
 COMPUTE_BACKEND=eks
 EKS_CREATE_VPC=true
 EKS_CLUSTER_NAME=modelops-cluster
 EKS_NAMESPACE=modelops
+```
+
+### Example SPDA Configuration
+```bash
+COMPUTE_BACKEND=spda
+DEADLINE_FARM_ID=farm-cee1b7e4af5549be8116bfa7e51f134d
+SPDA_S3_BUCKET_ARNS=arn:aws:s3:::spatialdatamanagement-ass-assetencrypteds3encrypte-b40cky4znngy
+AWS_ACCOUNT_ID=263408322201
 ```
 
 See README.md and example.env for full configuration reference.

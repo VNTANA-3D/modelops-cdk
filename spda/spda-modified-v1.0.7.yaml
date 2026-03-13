@@ -1,0 +1,1144 @@
+Description: (SO0339) spatial-data-management v1.0.7
+Resources:
+  CommonDependencyLayer21F94954:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      CompatibleRuntimes:
+        - nodejs22.x
+      Content:
+        S3Bucket:
+          Fn::Sub:
+            - ${BucketName}-${AWS::Region}
+            - BucketName:
+                Fn::FindInMap:
+                  - Solution
+                  - AssetsConfig
+                  - S3AssetBucketBaseName
+        S3Key:
+          Fn::Sub:
+            - ${KeyPrefix}/${AssetKey}
+            - KeyPrefix:
+                Fn::FindInMap:
+                  - Solution
+                  - AssetsConfig
+                  - S3AssetKeyPrefix
+              AssetKey: asset.401a4601163bd706243650b78d239defcdd438c8de785ff9efe7f30361b9ae49.zip
+      Description: Common dependency layer for custom resources
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/CommonDependencyLayer/Resource
+      aws:asset:path: asset.401a4601163bd706243650b78d239defcdd438c8de785ff9efe7f30361b9ae49
+      aws:asset:is-bundled: true
+      aws:asset:property: Content
+  DeploymentUUIDCRServiceRoleBB795035:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - 'arn:'
+              - Ref: AWS::Partition
+              - :iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Tags:
+        - Key: Solutions:ApplicationType
+          Value: AWS-Solutions
+        - Key: Solutions:SolutionID
+          Value: SO0339
+        - Key: Solutions:SolutionName
+          Value: spatial-data-management
+        - Key: Solutions:SolutionVersion
+          Value: v1.0.7
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/DeploymentUUIDCR/ServiceRole/Resource
+  DeploymentUUIDCR5C6418B9:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket:
+          Fn::Sub:
+            - ${BucketName}-${AWS::Region}
+            - BucketName:
+                Fn::FindInMap:
+                  - Solution
+                  - AssetsConfig
+                  - S3AssetBucketBaseName
+        S3Key:
+          Fn::Sub:
+            - ${KeyPrefix}/${AssetKey}
+            - KeyPrefix:
+                Fn::FindInMap:
+                  - Solution
+                  - AssetsConfig
+                  - S3AssetKeyPrefix
+              AssetKey: asset.90108ab66a7f4b17d39f0bcce77e88f2ca8619ffb63c4612f0b41acf11c81b5c.zip
+      Description: Lambda function used as a custom resource to generate a deployment UUID
+      Handler: index.handler
+      Layers:
+        - Ref: CommonDependencyLayer21F94954
+      MemorySize: 128
+      Role:
+        Fn::GetAtt:
+          - DeploymentUUIDCRServiceRoleBB795035
+          - Arn
+      Runtime: nodejs22.x
+      Tags:
+        - Key: Solutions:ApplicationType
+          Value: AWS-Solutions
+        - Key: Solutions:SolutionID
+          Value: SO0339
+        - Key: Solutions:SolutionName
+          Value: spatial-data-management
+        - Key: Solutions:SolutionVersion
+          Value: v1.0.7
+      Timeout: 30
+    DependsOn:
+      - DeploymentUUIDCRServiceRoleBB795035
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/DeploymentUUIDCR/Resource
+      aws:asset:path: asset.90108ab66a7f4b17d39f0bcce77e88f2ca8619ffb63c4612f0b41acf11c81b5c
+      aws:asset:is-bundled: true
+      aws:asset:property: Code
+      guard:
+        SuppressedRules:
+          - LAMBDA_CONCURRENCY_CHECK
+          - LAMBDA_INSIDE_VPC
+  DeploymentUUIDProviderframeworkonEventServiceRoleFD78BD8C:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - 'arn:'
+              - Ref: AWS::Partition
+              - :iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Tags:
+        - Key: Solutions:ApplicationType
+          Value: AWS-Solutions
+        - Key: Solutions:SolutionID
+          Value: SO0339
+        - Key: Solutions:SolutionName
+          Value: spatial-data-management
+        - Key: Solutions:SolutionVersion
+          Value: v1.0.7
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/DeploymentUUIDProvider/framework-onEvent/ServiceRole/Resource
+  DeploymentUUIDProviderframeworkonEventServiceRoleDefaultPolicyA7C1EDD0:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action: lambda:InvokeFunction
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - DeploymentUUIDCR5C6418B9
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - DeploymentUUIDCR5C6418B9
+                        - Arn
+                    - :*
+          - Action: lambda:GetFunction
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - DeploymentUUIDCR5C6418B9
+                - Arn
+        Version: "2012-10-17"
+      PolicyName: DeploymentUUIDProviderframeworkonEventServiceRoleDefaultPolicyA7C1EDD0
+      Roles:
+        - Ref: DeploymentUUIDProviderframeworkonEventServiceRoleFD78BD8C
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/DeploymentUUIDProvider/framework-onEvent/ServiceRole/DefaultPolicy/Resource
+  DeploymentUUIDProviderframeworkonEventCA3CE751:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket:
+          Fn::Sub:
+            - ${BucketName}-${AWS::Region}
+            - BucketName:
+                Fn::FindInMap:
+                  - Solution
+                  - AssetsConfig
+                  - S3AssetBucketBaseName
+        S3Key:
+          Fn::Sub:
+            - ${KeyPrefix}/${AssetKey}
+            - KeyPrefix:
+                Fn::FindInMap:
+                  - Solution
+                  - AssetsConfig
+                  - S3AssetKeyPrefix
+              AssetKey: asset.bdc104ed9cab1b5b6421713c8155f0b753380595356f710400609664d3635eca.zip
+      Description: AWS CDK resource provider framework - onEvent (SpatialDataManagementStack/DeploymentUUIDProvider)
+      Environment:
+        Variables:
+          USER_ON_EVENT_FUNCTION_ARN:
+            Fn::GetAtt:
+              - DeploymentUUIDCR5C6418B9
+              - Arn
+      Handler: framework.onEvent
+      LoggingConfig:
+        ApplicationLogLevel: FATAL
+        LogFormat: JSON
+      Role:
+        Fn::GetAtt:
+          - DeploymentUUIDProviderframeworkonEventServiceRoleFD78BD8C
+          - Arn
+      Runtime: nodejs22.x
+      Tags:
+        - Key: Solutions:ApplicationType
+          Value: AWS-Solutions
+        - Key: Solutions:SolutionID
+          Value: SO0339
+        - Key: Solutions:SolutionName
+          Value: spatial-data-management
+        - Key: Solutions:SolutionVersion
+          Value: v1.0.7
+      Timeout: 900
+    DependsOn:
+      - DeploymentUUIDProviderframeworkonEventServiceRoleDefaultPolicyA7C1EDD0
+      - DeploymentUUIDProviderframeworkonEventServiceRoleFD78BD8C
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/DeploymentUUIDProvider/framework-onEvent/Resource
+      aws:asset:path: asset.bdc104ed9cab1b5b6421713c8155f0b753380595356f710400609664d3635eca
+      aws:asset:is-bundled: false
+      aws:asset:property: Code
+      guard:
+        SuppressedRules:
+          - LAMBDA_CONCURRENCY_CHECK
+          - LAMBDA_INSIDE_VPC
+  DeploymentUUID:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken:
+        Fn::GetAtt:
+          - DeploymentUUIDProviderframeworkonEventCA3CE751
+          - Arn
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/DeploymentUUID/Default
+
+  AuthStackNestedStackAuthStackNestedStackResourceC3CF3BFE:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Tags:
+        - Key: Solutions:ApplicationType
+          Value: AWS-Solutions
+        - Key: Solutions:SolutionID
+          Value: SO0339
+        - Key: Solutions:SolutionName
+          Value: spatial-data-management
+        - Key: Solutions:SolutionVersion
+          Value: v1.0.7
+      TemplateURL:
+        Fn::Join:
+          - ""
+          - - https://s3.
+            - Ref: AWS::Region
+            - .
+            - Ref: AWS::URLSuffix
+            - /
+            - Fn::Sub:
+                - ${BucketName}-${AWS::Region}
+                - BucketName:
+                    Fn::FindInMap:
+                      - Solution
+                      - AssetsConfig
+                      - S3AssetBucketBaseName
+            - /
+            - Fn::FindInMap:
+                - Solution
+                - AssetsConfig
+                - S3AssetKeyPrefix
+            - /asset.c64d312092d7b027a1a35f848a8660c67cc8c6d10e4b231444a418a9f7d5fb26.json
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/AuthStack.NestedStack/AuthStack.NestedStackResource
+      aws:asset:path: SpatialDataManagementStackAuthStackA5D247F6.nested.template.json
+      aws:asset:property: TemplateURL
+  OpenSearchStackNestedStackOpenSearchStackNestedStackResourceC58C1C55:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        referencetoSpatialDataManagementStackDeploymentUUID0C7B9AFCDeploymentUUIDShort:
+          Fn::GetAtt:
+            - DeploymentUUID
+            - DeploymentUUIDShort
+      Tags:
+        - Key: Solutions:ApplicationType
+          Value: AWS-Solutions
+        - Key: Solutions:SolutionID
+          Value: SO0339
+        - Key: Solutions:SolutionName
+          Value: spatial-data-management
+        - Key: Solutions:SolutionVersion
+          Value: v1.0.7
+      TemplateURL:
+        Fn::Join:
+          - ""
+          - - https://s3.
+            - Ref: AWS::Region
+            - .
+            - Ref: AWS::URLSuffix
+            - /
+            - Fn::Sub:
+                - ${BucketName}-${AWS::Region}
+                - BucketName:
+                    Fn::FindInMap:
+                      - Solution
+                      - AssetsConfig
+                      - S3AssetBucketBaseName
+            - /
+            - Fn::FindInMap:
+                - Solution
+                - AssetsConfig
+                - S3AssetKeyPrefix
+            - /asset.fa2ea43f3bc26054438abfd6f59e5b8ca2dce40eeae29b97c6cc225a741485c1.json
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/OpenSearchStack.NestedStack/OpenSearchStack.NestedStackResource
+      aws:asset:path: SpatialDataManagementStackOpenSearchStackD479A255.nested.template.json
+      aws:asset:property: TemplateURL
+  PortalStackNestedStackPortalStackNestedStackResource5CB86AF2:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        referencetoSpatialDataManagementStackLogBucketRetentionDays57BF6BE7Ref:
+          Ref: LogBucketRetentionDays
+        referencetoSpatialDataManagementStackPortalFullyQualifiedDomainName0A31AB8DRef:
+          Ref: PortalFullyQualifiedDomainName
+        referencetoSpatialDataManagementStackPortalRoute53HostedZoneIdE5659B8DRef:
+          Ref: PortalRoute53HostedZoneId
+        referencetoSpatialDataManagementStackDeploymentUUID0C7B9AFCDeploymentUUIDShort:
+          Fn::GetAtt:
+            - DeploymentUUID
+            - DeploymentUUIDShort
+        ? referencetoSpatialDataManagementStackAuthStackNestedStackAuthStackNestedStackResource0C266B3FOutputsSpatialDataManagementStackAuthStackcognitouserpooluserpoolcognitodomainEA583AB1Ref
+        : Fn::GetAtt:
+            - AuthStackNestedStackAuthStackNestedStackResourceC3CF3BFE
+            - Outputs.SpatialDataManagementStackAuthStackcognitouserpooluserpoolcognitodomainEA583AB1Ref
+        ? referencetoSpatialDataManagementStackAuthStackNestedStackAuthStackNestedStackResource0C266B3FOutputsSpatialDataManagementStackAuthStackcognitouserpool8BC5513BRef
+        : Fn::GetAtt:
+            - AuthStackNestedStackAuthStackNestedStackResourceC3CF3BFE
+            - Outputs.SpatialDataManagementStackAuthStackcognitouserpool8BC5513BRef
+      Tags:
+        - Key: Solutions:ApplicationType
+          Value: AWS-Solutions
+        - Key: Solutions:SolutionID
+          Value: SO0339
+        - Key: Solutions:SolutionName
+          Value: spatial-data-management
+        - Key: Solutions:SolutionVersion
+          Value: v1.0.7
+      TemplateURL:
+        Fn::Join:
+          - ""
+          - - https://s3.
+            - Ref: AWS::Region
+            - .
+            - Ref: AWS::URLSuffix
+            - /
+            - Fn::Sub:
+                - ${BucketName}-${AWS::Region}
+                - BucketName:
+                    Fn::FindInMap:
+                      - Solution
+                      - AssetsConfig
+                      - S3AssetBucketBaseName
+            - /
+            - Fn::FindInMap:
+                - Solution
+                - AssetsConfig
+                - S3AssetKeyPrefix
+            - /asset.9632dde9577b63dca35cb51551016354971054246b968a948f14bbde81115c9c.json
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/PortalStack.NestedStack/PortalStack.NestedStackResource
+      aws:asset:path: SpatialDataManagementStackPortalStack75D23166.nested.template.json
+      aws:asset:property: TemplateURL
+  AssetManagementStackNestedStackAssetManagementStackNestedStackResourceEDB0649E:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        referencetoSpatialDataManagementStackDeploymentMode83B43A12Ref:
+          Ref: DeploymentMode
+        referencetoSpatialDataManagementStackLogBucketRetentionDays57BF6BE7Ref:
+          Ref: LogBucketRetentionDays
+        ? referencetoSpatialDataManagementStackVpcStackNestedStackVpcStackNestedStackResourceCAF11EBAOutputsSpatialDataManagementStackVpcStackVpcVPCAC25A8F5Ref
+        : Ref: ExistingVpcId
+        ? referencetoSpatialDataManagementStackAuthStackNestedStackAuthStackNestedStackResource0C266B3FOutputsSpatialDataManagementStackAuthStackcognitouserpool8BC5513BArn
+        : Fn::GetAtt:
+            - AuthStackNestedStackAuthStackNestedStackResourceC3CF3BFE
+            - Outputs.SpatialDataManagementStackAuthStackcognitouserpool8BC5513BArn
+        ? referencetoSpatialDataManagementStackVpcStackNestedStackVpcStackNestedStackResourceCAF11EBAOutputsSpatialDataManagementStackVpcStackVpcVPCIsolatedSubnet1SubnetA1130226Ref
+        : Ref: ExistingPrivateSubnet1Id
+        ? referencetoSpatialDataManagementStackVpcStackNestedStackVpcStackNestedStackResourceCAF11EBAOutputsSpatialDataManagementStackVpcStackVpcVPCIsolatedSubnet2Subnet728CF8B5Ref
+        : Ref: ExistingPrivateSubnet2Id
+        ? referencetoSpatialDataManagementStackOpenSearchStackNestedStackOpenSearchStackNestedStackResourceD9BDC001OutputsSpatialDataManagementStackOpenSearchStackOSAssetsSearchCollectionE194A9E7Arn
+        : Fn::GetAtt:
+            - OpenSearchStackNestedStackOpenSearchStackNestedStackResourceC58C1C55
+            - Outputs.SpatialDataManagementStackOpenSearchStackOSAssetsSearchCollectionE194A9E7Arn
+        ? referencetoSpatialDataManagementStackVpcStackNestedStackVpcStackNestedStackResourceCAF11EBAOutputsSpatialDataManagementStackVpcStackVpcVPCPrivateSubnet1SubnetF4DB546CRef
+        : Ref: ExistingPrivateSubnet1Id
+        ? referencetoSpatialDataManagementStackVpcStackNestedStackVpcStackNestedStackResourceCAF11EBAOutputsSpatialDataManagementStackVpcStackVpcVPCPrivateSubnet2Subnet8E95C6A7Ref
+        : Ref: ExistingPrivateSubnet2Id
+        ? referencetoSpatialDataManagementStackAuthStackNestedStackAuthStackNestedStackResource0C266B3FOutputsSpatialDataManagementStackAuthStackcognitouserpool8BC5513BRef
+        : Fn::GetAtt:
+            - AuthStackNestedStackAuthStackNestedStackResourceC3CF3BFE
+            - Outputs.SpatialDataManagementStackAuthStackcognitouserpool8BC5513BRef
+        referencetoSpatialDataManagementStackDeploymentUUID0C7B9AFCDeploymentUUIDShort:
+          Fn::GetAtt:
+            - DeploymentUUID
+            - DeploymentUUIDShort
+        ? referencetoSpatialDataManagementStackOpenSearchStackNestedStackOpenSearchStackNestedStackResourceD9BDC001OutputsSpatialDataManagementStackOpenSearchStackOSAssetsSearchCollectionE194A9E7CollectionEndpoint
+        : Fn::GetAtt:
+            - OpenSearchStackNestedStackOpenSearchStackNestedStackResourceC58C1C55
+            - Outputs.SpatialDataManagementStackOpenSearchStackOSAssetsSearchCollectionE194A9E7CollectionEndpoint
+      Tags:
+        - Key: Solutions:ApplicationType
+          Value: AWS-Solutions
+        - Key: Solutions:SolutionID
+          Value: SO0339
+        - Key: Solutions:SolutionName
+          Value: spatial-data-management
+        - Key: Solutions:SolutionVersion
+          Value: v1.0.7
+      TemplateURL:
+        Fn::Join:
+          - ""
+          - - https://s3.
+            - Ref: AWS::Region
+            - .
+            - Ref: AWS::URLSuffix
+            - /
+            - Fn::Sub:
+                - ${BucketName}-${AWS::Region}
+                - BucketName:
+                    Fn::FindInMap:
+                      - Solution
+                      - AssetsConfig
+                      - S3AssetBucketBaseName
+            - /
+            - Fn::FindInMap:
+                - Solution
+                - AssetsConfig
+                - S3AssetKeyPrefix
+            - /asset.625b9998d243c0f3c97ce4e15160b2e3d1d834351d3a47c7065892bfc83deb7d.json
+    DependsOn:
+      - OpenSearchStackNestedStackOpenSearchStackNestedStackResourceC58C1C55
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/AssetManagementStack.NestedStack/AssetManagementStack.NestedStackResource
+      aws:asset:path: SpatialDataManagementStackAssetManagementStack3BA70835.nested.template.json
+      aws:asset:property: TemplateURL
+  DeadlineStackNestedStackDeadlineStackNestedStackResource71FD9070:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        referencetoSpatialDataManagementStackExistingDeadlineFarmId8A478E66Ref:
+          Ref: ExistingDeadlineFarmId
+        referencetoSpatialDataManagementStackExistingDeadlineQueueIdE97CA24ERef:
+          Ref: ExistingDeadlineQueueId
+        ? referencetoSpatialDataManagementStackAssetManagementStackNestedStackAssetManagementStackNestedStackResource5AAEEF13OutputsAssetBucketArn
+        : Fn::GetAtt:
+            - AssetManagementStackNestedStackAssetManagementStackNestedStackResourceEDB0649E
+            - Outputs.AssetBucketArn
+        ? referencetoSpatialDataManagementStackAssetManagementStackNestedStackAssetManagementStackNestedStackResource5AAEEF13OutputsAssetBucketName
+        : Fn::GetAtt:
+            - AssetManagementStackNestedStackAssetManagementStackNestedStackResourceEDB0649E
+            - Outputs.AssetBucketName
+      Tags:
+        - Key: Solutions:ApplicationType
+          Value: AWS-Solutions
+        - Key: Solutions:SolutionID
+          Value: SO0339
+        - Key: Solutions:SolutionName
+          Value: spatial-data-management
+        - Key: Solutions:SolutionVersion
+          Value: v1.0.7
+      TemplateURL:
+        Fn::Join:
+          - ""
+          - - https://s3.
+            - Ref: AWS::Region
+            - .
+            - Ref: AWS::URLSuffix
+            - /
+            - Fn::Sub:
+                - ${BucketName}-${AWS::Region}
+                - BucketName:
+                    Fn::FindInMap:
+                      - Solution
+                      - AssetsConfig
+                      - S3AssetBucketBaseName
+            - /
+            - Fn::FindInMap:
+                - Solution
+                - AssetsConfig
+                - S3AssetKeyPrefix
+            - /asset.433e360374a9d9c1a5b6c1de4f61537c8206866e74fff3667dc5f5c0db52f882.json
+    DependsOn:
+      - AssetManagementStackNestedStackAssetManagementStackNestedStackResourceEDB0649E
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/DeadlineStack.NestedStack/DeadlineStack.NestedStackResource
+      aws:asset:path: SpatialDataManagementStackDeadlineStack57A9C878.nested.template.json
+      aws:asset:property: TemplateURL
+  cognitoidentitypoolBerryessaIdentityPool08835301:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      AllowClassicFlow: false
+      AllowUnauthenticatedIdentities: false
+      CognitoIdentityProviders:
+        - ClientId:
+            Fn::GetAtt:
+              - PortalStackNestedStackPortalStackNestedStackResource5CB86AF2
+              - Outputs.SpatialDataManagementStackPortalStackuserappclientuserpoolappclient3A17776ARef
+          ProviderName:
+            Fn::GetAtt:
+              - AuthStackNestedStackAuthStackNestedStackResourceC3CF3BFE
+              - Outputs.SpatialDataManagementStackAuthStackcognitouserpool8BC5513BProviderName
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/cognito-identity-pool/BerryessaIdentityPool
+  cognitoidentitypoolBerryessaDefaultRole2AF7037D:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                cognito-identity.amazonaws.com:aud:
+                  Ref: cognitoidentitypoolBerryessaIdentityPool08835301
+              ForAnyValue:StringLike:
+                cognito-identity.amazonaws.com:amr: authenticated
+            Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+        Version: "2012-10-17"
+      Description: Default role for authenticated Berryessa users
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - 'arn:'
+              - Ref: AWS::Partition
+              - :iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      MaxSessionDuration: 43200
+      Tags:
+        - Key: Solutions:ApplicationType
+          Value: AWS-Solutions
+        - Key: Solutions:SolutionID
+          Value: SO0339
+        - Key: Solutions:SolutionName
+          Value: spatial-data-management
+        - Key: Solutions:SolutionVersion
+          Value: v1.0.7
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/cognito-identity-pool/BerryessaDefaultRole/Resource
+  cognitoidentitypoolBerryessaDefaultRoleDefaultPolicy8E4F0AE3:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - lambda:InvokeFunction
+              - lambda:InvokeFunctionUrl
+              - lambda:GetFunctionUrlConfig
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - AssetManagementStackNestedStackAssetManagementStackNestedStackResourceEDB0649E
+                - Outputs.SpatialDataManagementStackAssetManagementStackLambdaFunctionsResourceOperation88C80E7DArn
+          - Action: cognito-identity:GetCredentialsForIdentity
+            Effect: Allow
+            Resource:
+              Fn::Join:
+                - ""
+                - - 'arn:aws:cognito-identity:'
+                  - Ref: AWS::Region
+                  - ':'
+                  - Ref: AWS::AccountId
+                  - :identitypool/
+                  - Ref: cognitoidentitypoolBerryessaIdentityPool08835301
+          - Action:
+              - cognito-idp:ListUsers
+              - cognito-idp:ListGroups
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - AuthStackNestedStackAuthStackNestedStackResourceC3CF3BFE
+                - Outputs.SpatialDataManagementStackAuthStackcognitouserpool8BC5513BArn
+          - Action: deadline:*
+            Effect: Allow
+            Resource: '*'
+          - Action:
+              - geo:SearchPlaceIndexForText
+              - geo:SearchPlaceIndexForSuggestions
+              - geo:GetMapStyleDescriptor
+              - geo:GetMapGlyphs
+              - geo:GetMapSprites
+              - geo:GetMapTile
+            Effect: Allow
+            Resource:
+              - arn:aws:geo:*:*:place-index/SpatialDataManagementPlaceIndex
+              - arn:aws:geo:*:*:map/*
+          - Action: geo-maps:GetTile
+            Effect: Allow
+            Resource:
+              Fn::Join:
+                - ""
+                - - 'arn:aws:geo-maps:'
+                  - Ref: AWS::Region
+                  - ::provider/default
+        Version: "2012-10-17"
+      PolicyName: cognitoidentitypoolBerryessaDefaultRoleDefaultPolicy8E4F0AE3
+      Roles:
+        - Ref: cognitoidentitypoolBerryessaDefaultRole2AF7037D
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/cognito-identity-pool/BerryessaDefaultRole/DefaultPolicy/Resource
+  cognitoidentitypoolBerryessaIdentityPoolRoleAttachment8EF55332:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId:
+        Ref: cognitoidentitypoolBerryessaIdentityPool08835301
+      Roles:
+        authenticated:
+          Fn::GetAtt:
+            - cognitoidentitypoolBerryessaDefaultRole2AF7037D
+            - Arn
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/cognito-identity-pool/BerryessaIdentityPoolRoleAttachment
+  PortalRuntimeConfigLambdaServiceRole9A260A5B:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - 'arn:'
+              - Ref: AWS::Partition
+              - :iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Tags:
+        - Key: Solutions:ApplicationType
+          Value: AWS-Solutions
+        - Key: Solutions:SolutionID
+          Value: SO0339
+        - Key: Solutions:SolutionName
+          Value: spatial-data-management
+        - Key: Solutions:SolutionVersion
+          Value: v1.0.7
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/PortalRuntimeConfigLambda/RuntimeConfigLambda/ServiceRole/Resource
+  PortalRuntimeConfigLambdaServiceRoleDefaultPolicy36401573:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action: s3:PutObject
+            Effect: Allow
+            Resource:
+              Fn::Join:
+                - ""
+                - - Fn::GetAtt:
+                      - PortalStackNestedStackPortalStackNestedStackResource5CB86AF2
+                      - Outputs.SpatialDataManagementStackPortalStackPortalCloudFrontEncryptedS3EncryptedBucket33FEAA1BArn
+                  - /*
+        Version: "2012-10-17"
+      PolicyName: PortalRuntimeConfigLambdaServiceRoleDefaultPolicy36401573
+      Roles:
+        - Ref: PortalRuntimeConfigLambdaServiceRole9A260A5B
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/PortalRuntimeConfigLambda/RuntimeConfigLambda/ServiceRole/DefaultPolicy/Resource
+  PortalRuntimeConfigLambda5C12A2B5:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket:
+          Fn::Sub:
+            - ${BucketName}-${AWS::Region}
+            - BucketName:
+                Fn::FindInMap:
+                  - Solution
+                  - AssetsConfig
+                  - S3AssetBucketBaseName
+        S3Key:
+          Fn::Sub:
+            - ${KeyPrefix}/${AssetKey}
+            - KeyPrefix:
+                Fn::FindInMap:
+                  - Solution
+                  - AssetsConfig
+                  - S3AssetKeyPrefix
+              AssetKey: asset.22659978c235d79e2a12d5e107e08dc7142c03ccb23bd8d2d58fbd3ff31c6ad1.zip
+      Description: Lambda function used as a custom resource to generate Spatial Data Portal react runtime config
+      Environment:
+        Variables:
+          USER_AGENT_STRING: AWSSOLUTION/SO0339/v1.0.7
+      Handler: index.handler
+      Layers:
+        - Ref: CommonDependencyLayer21F94954
+      MemorySize: 128
+      Role:
+        Fn::GetAtt:
+          - PortalRuntimeConfigLambdaServiceRole9A260A5B
+          - Arn
+      Runtime: nodejs22.x
+      Tags:
+        - Key: Solutions:ApplicationType
+          Value: AWS-Solutions
+        - Key: Solutions:SolutionID
+          Value: SO0339
+        - Key: Solutions:SolutionName
+          Value: spatial-data-management
+        - Key: Solutions:SolutionVersion
+          Value: v1.0.7
+      Timeout: 30
+    DependsOn:
+      - PortalRuntimeConfigLambdaServiceRoleDefaultPolicy36401573
+      - PortalRuntimeConfigLambdaServiceRole9A260A5B
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/PortalRuntimeConfigLambda/RuntimeConfigLambda/Resource
+      aws:asset:path: asset.22659978c235d79e2a12d5e107e08dc7142c03ccb23bd8d2d58fbd3ff31c6ad1
+      aws:asset:is-bundled: true
+      aws:asset:property: Code
+      guard:
+        SuppressedRules:
+          - LAMBDA_CONCURRENCY_CHECK
+          - LAMBDA_INSIDE_VPC
+  PortalRuntimeConfigLambdaRuntimeConfigLambdaProviderframeworkonEventServiceRole6C992C1D:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - 'arn:'
+              - Ref: AWS::Partition
+              - :iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Tags:
+        - Key: Solutions:ApplicationType
+          Value: AWS-Solutions
+        - Key: Solutions:SolutionID
+          Value: SO0339
+        - Key: Solutions:SolutionName
+          Value: spatial-data-management
+        - Key: Solutions:SolutionVersion
+          Value: v1.0.7
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/PortalRuntimeConfigLambda/RuntimeConfigLambdaProvider/framework-onEvent/ServiceRole/Resource
+  PortalRuntimeConfigLambdaRuntimeConfigLambdaProviderframeworkonEventServiceRoleDefaultPolicy4B5EDC19:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action: lambda:InvokeFunction
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - PortalRuntimeConfigLambda5C12A2B5
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - PortalRuntimeConfigLambda5C12A2B5
+                        - Arn
+                    - :*
+          - Action: lambda:GetFunction
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - PortalRuntimeConfigLambda5C12A2B5
+                - Arn
+        Version: "2012-10-17"
+      PolicyName: PortalRuntimeConfigLambdaRuntimeConfigLambdaProviderframeworkonEventServiceRoleDefaultPolicy4B5EDC19
+      Roles:
+        - Ref: PortalRuntimeConfigLambdaRuntimeConfigLambdaProviderframeworkonEventServiceRole6C992C1D
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/PortalRuntimeConfigLambda/RuntimeConfigLambdaProvider/framework-onEvent/ServiceRole/DefaultPolicy/Resource
+  PortalRuntimeConfigLambdaRuntimeConfigLambdaProviderframeworkonEvent1B2506AE:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket:
+          Fn::Sub:
+            - ${BucketName}-${AWS::Region}
+            - BucketName:
+                Fn::FindInMap:
+                  - Solution
+                  - AssetsConfig
+                  - S3AssetBucketBaseName
+        S3Key:
+          Fn::Sub:
+            - ${KeyPrefix}/${AssetKey}
+            - KeyPrefix:
+                Fn::FindInMap:
+                  - Solution
+                  - AssetsConfig
+                  - S3AssetKeyPrefix
+              AssetKey: asset.bdc104ed9cab1b5b6421713c8155f0b753380595356f710400609664d3635eca.zip
+      Description: AWS CDK resource provider framework - onEvent (SpatialDataManagementStack/PortalRuntimeConfigLambda/RuntimeConfigLambdaProvider)
+      Environment:
+        Variables:
+          USER_ON_EVENT_FUNCTION_ARN:
+            Fn::GetAtt:
+              - PortalRuntimeConfigLambda5C12A2B5
+              - Arn
+      Handler: framework.onEvent
+      LoggingConfig:
+        ApplicationLogLevel: FATAL
+        LogFormat: JSON
+      Role:
+        Fn::GetAtt:
+          - PortalRuntimeConfigLambdaRuntimeConfigLambdaProviderframeworkonEventServiceRole6C992C1D
+          - Arn
+      Runtime: nodejs22.x
+      Tags:
+        - Key: Solutions:ApplicationType
+          Value: AWS-Solutions
+        - Key: Solutions:SolutionID
+          Value: SO0339
+        - Key: Solutions:SolutionName
+          Value: spatial-data-management
+        - Key: Solutions:SolutionVersion
+          Value: v1.0.7
+      Timeout: 900
+    DependsOn:
+      - PortalRuntimeConfigLambdaRuntimeConfigLambdaProviderframeworkonEventServiceRoleDefaultPolicy4B5EDC19
+      - PortalRuntimeConfigLambdaRuntimeConfigLambdaProviderframeworkonEventServiceRole6C992C1D
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/PortalRuntimeConfigLambda/RuntimeConfigLambdaProvider/framework-onEvent/Resource
+      aws:asset:path: asset.bdc104ed9cab1b5b6421713c8155f0b753380595356f710400609664d3635eca
+      aws:asset:is-bundled: false
+      aws:asset:property: Code
+      guard:
+        SuppressedRules:
+          - LAMBDA_CONCURRENCY_CHECK
+          - LAMBDA_INSIDE_VPC
+  PortalRuntimeConfigLambdaRuntimeConfigLambdaCustomResource65045C79:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken:
+        Fn::GetAtt:
+          - PortalRuntimeConfigLambdaRuntimeConfigLambdaProviderframeworkonEvent1B2506AE
+          - Arn
+      DestinationBucket:
+        Fn::GetAtt:
+          - PortalStackNestedStackPortalStackNestedStackResource5CB86AF2
+          - Outputs.SpatialDataManagementStackPortalStackPortalCloudFrontEncryptedS3EncryptedBucket33FEAA1BRef
+      DestinationKey: runtime-config.json
+      BuildUniqueId: fbaa3d13
+      Config:
+        authConfig:
+          userPoolId:
+            Fn::GetAtt:
+              - AuthStackNestedStackAuthStackNestedStackResourceC3CF3BFE
+              - Outputs.SpatialDataManagementStackAuthStackcognitouserpool8BC5513BRef
+          userPoolClientId:
+            Fn::GetAtt:
+              - PortalStackNestedStackPortalStackNestedStackResource5CB86AF2
+              - Outputs.SpatialDataManagementStackPortalStackuserappclientuserpoolappclient3A17776ARef
+          identityPoolId:
+            Ref: cognitoidentitypoolBerryessaIdentityPool08835301
+          cognitoDomain:
+            Fn::Join:
+              - ""
+              - - https://
+                - Fn::GetAtt:
+                    - AuthStackNestedStackAuthStackNestedStackResourceC3CF3BFE
+                    - Outputs.SpatialDataManagementStackAuthStackcognitouserpooluserpoolcognitodomainEA583AB1Ref
+                - .auth.
+                - Ref: AWS::Region
+                - .amazoncognito.com
+          identityPoolClient:
+            Fn::Join:
+              - ""
+              - - cognito-idp.
+                - Ref: AWS::Region
+                - .amazonaws.com/
+                - Fn::GetAtt:
+                    - AuthStackNestedStackAuthStackNestedStackResourceC3CF3BFE
+                    - Outputs.SpatialDataManagementStackAuthStackcognitouserpool8BC5513BRef
+          region:
+            Ref: AWS::Region
+        controlPlaneEndpoint:
+          Fn::Join:
+            - ""
+            - - https://
+              - Fn::GetAtt:
+                  - AssetManagementStackNestedStackAssetManagementStackNestedStackResourceEDB0649E
+                  - Outputs.SpatialDataManagementStackAssetManagementStackApiGatewayApi0AF96685Ref
+              - .execute-api.
+              - Ref: AWS::Region
+              - .
+              - Ref: AWS::URLSuffix
+              - /
+              - Fn::GetAtt:
+                  - AssetManagementStackNestedStackAssetManagementStackNestedStackResourceEDB0649E
+                  - Outputs.SpatialDataManagementStackAssetManagementStackApiGatewayApiDeploymentStage20250418DBC29351Ref
+              - /
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/PortalRuntimeConfigLambda/RuntimeConfigLambdaCustomResource/Default
+  MonitoringStackNestedStackMonitoringStackNestedStackResourceC34BBBCF:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        referencetoSpatialDataManagementStackLogBucketRetentionDays57BF6BE7Ref:
+          Ref: LogBucketRetentionDays
+        ? referencetoSpatialDataManagementStackAuthStackNestedStackAuthStackNestedStackResource0C266B3FOutputsSpatialDataManagementStackAuthStackcognitouserpool8BC5513BRef
+        : Fn::GetAtt:
+            - AuthStackNestedStackAuthStackNestedStackResourceC3CF3BFE
+            - Outputs.SpatialDataManagementStackAuthStackcognitouserpool8BC5513BRef
+        ? referencetoSpatialDataManagementStackPortalStackNestedStackPortalStackNestedStackResource0294FFC3OutputsSpatialDataManagementStackPortalStackuserappclientuserpoolappclient3A17776ARef
+        : Fn::GetAtt:
+            - PortalStackNestedStackPortalStackNestedStackResource5CB86AF2
+            - Outputs.SpatialDataManagementStackPortalStackuserappclientuserpoolappclient3A17776ARef
+        ? referencetoSpatialDataManagementStackAuthStackNestedStackAuthStackNestedStackResource0C266B3FOutputsSpatialDataManagementStackAuthStackcognitouserpool8BC5513BProviderName
+        : Fn::GetAtt:
+            - AuthStackNestedStackAuthStackNestedStackResourceC3CF3BFE
+            - Outputs.SpatialDataManagementStackAuthStackcognitouserpool8BC5513BProviderName
+        ? referencetoSpatialDataManagementStackVpcStackNestedStackVpcStackNestedStackResourceCAF11EBAOutputsSpatialDataManagementStackVpcStackVpcVPCAC25A8F5Ref
+        : Ref: ExistingVpcId
+        referencetoSpatialDataManagementStackDeploymentUUID0C7B9AFCDeploymentUUID:
+          Fn::GetAtt:
+            - DeploymentUUID
+            - DeploymentUUID
+        ? referencetoSpatialDataManagementStackAssetManagementStackNestedStackAssetManagementStackNestedStackResource5AAEEF13OutputsSpatialDataManagementStackAssetManagementStackLambdaFunctionsCorePythonLayerF88E7BD1Ref
+        : Fn::GetAtt:
+            - AssetManagementStackNestedStackAssetManagementStackNestedStackResourceEDB0649E
+            - Outputs.SpatialDataManagementStackAssetManagementStackLambdaFunctionsCorePythonLayerF88E7BD1Ref
+        ? referencetoSpatialDataManagementStackVpcStackNestedStackVpcStackNestedStackResourceCAF11EBAOutputsSpatialDataManagementStackVpcStackVpcVPCPrivateSubnet1SubnetF4DB546CRef
+        : Ref: ExistingPrivateSubnet1Id
+        ? referencetoSpatialDataManagementStackVpcStackNestedStackVpcStackNestedStackResourceCAF11EBAOutputsSpatialDataManagementStackVpcStackVpcVPCPrivateSubnet2Subnet8E95C6A7Ref
+        : Ref: ExistingPrivateSubnet2Id
+      Tags:
+        - Key: Solutions:ApplicationType
+          Value: AWS-Solutions
+        - Key: Solutions:SolutionID
+          Value: SO0339
+        - Key: Solutions:SolutionName
+          Value: spatial-data-management
+        - Key: Solutions:SolutionVersion
+          Value: v1.0.7
+      TemplateURL:
+        Fn::Join:
+          - ""
+          - - https://s3.
+            - Ref: AWS::Region
+            - .
+            - Ref: AWS::URLSuffix
+            - /
+            - Fn::Sub:
+                - ${BucketName}-${AWS::Region}
+                - BucketName:
+                    Fn::FindInMap:
+                      - Solution
+                      - AssetsConfig
+                      - S3AssetBucketBaseName
+            - /
+            - Fn::FindInMap:
+                - Solution
+                - AssetsConfig
+                - S3AssetKeyPrefix
+            - /asset.be35fb3fa67695e3b2e3e719ef95c80589bc0b075e4c3ca42e6337e649e3648c.json
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/MonitoringStack.NestedStack/MonitoringStack.NestedStackResource
+      aws:asset:path: SpatialDataManagementStackMonitoringStackC3B755DC.nested.template.json
+      aws:asset:property: TemplateURL
+  CDKMetadata:
+    Type: AWS::CDK::Metadata
+    Properties:
+      Analytics: v2:deflate64:H4sIAAAAAAAA/11Qy2rDQAz8ltxltbG/IDEUCqUYB3o1ylp2149dWMkJxvjfy9ptKDnNDBoNI6WYHjN8PdBdElP3yWCvuFyUTA90l2oZaLzWhMsHzRy+OIj1DvLGPeu3yRmN/I+sIFlFIqyCpwggGZ4n07OeSRj24Mr5mjvBzw0eIZZGXEo/cIzesPCDNXOUO1vB+NZZ9bjkjXuv2anVufB+gCcd10+qZL5HdrqusLW5KLXWtVCy+CkYBjOJ+rEKv1qwCP5maw6Qb5OHMTb6xwsKNLJGX+O2x60Qj8JOXm5piscMj4dOrE3C5NSOjOWOPwjYfFB6AQAA
+    Metadata:
+      aws:cdk:path: SpatialDataManagementStack/CDKMetadata/Default
+    Condition: CDKMetadataAvailable
+Parameters:
+  PortalFullyQualifiedDomainName:
+    Type: String
+    Default: ""
+    AllowedPattern: ^$|^[a-zA-Z0-9][a-zA-Z0-9\-\.]*[a-zA-Z0-9]$
+    ConstraintDescription: Must be a valid domain name or empty
+    Description: '[Optional] Fully qualified domain name for custom domain'
+  PortalRoute53HostedZoneId:
+    Type: String
+    Default: ""
+    AllowedPattern: ^$|^Z[A-Z0-9]+$
+    ConstraintDescription: Must be a valid Route53 hosted zone ID (starts with Z) or empty
+    Description: '[Optional] Route53 hosted zone ID for custom domain'
+  DeploymentMode:
+    Type: String
+    Default: Dev
+    AllowedValues:
+      - Dev
+      - Prod
+    Description: Deployment mode (Dev or Prod). Use this to configure scale/cost tendencies
+  LogBucketRetentionDays:
+    Type: Number
+    Default: 90
+    Description: '[Optional] Number of days to retain logs in the log bucket'
+  ExistingDeadlineFarmId:
+    Type: String
+    Default: ""
+    AllowedPattern: ^$|^farm-[a-f0-9]{32}$
+    ConstraintDescription: Must be a valid Deadline Cloud Farm ID (farm-<32 hex chars>) or empty
+    Description: '[Optional] ID of the Deadline Cloud Farm to use for jobs'
+  ExistingDeadlineQueueId:
+    Type: String
+    Default: ""
+    AllowedPattern: ^$|^queue-[0-9a-f]{32}$
+    ConstraintDescription: Must be a valid Deadline Cloud Queue ID (queue-<32 hex chars>) or empty
+    Description: '[Optional] ID of the Deadline Cloud Queue to use for jobs. Must be provided when EXISTING_DEADLINE_FARM_ID is provided'
+  ExistingVpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: ID of the existing VPC to use
+  ExistingPrivateSubnet1Id:
+    Type: AWS::EC2::Subnet::Id
+    Description: ID of the first private subnet (must be in OpenSearch Serverless supported AZ)
+  ExistingPrivateSubnet2Id:
+    Type: AWS::EC2::Subnet::Id
+    Description: ID of the second private subnet (must be in OpenSearch Serverless supported AZ)
+Conditions:
+  CDKMetadataAvailable:
+    Fn::Or:
+      - Fn::Or:
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - af-south-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-east-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-northeast-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-northeast-2
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-northeast-3
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-south-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-south-2
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-southeast-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-southeast-2
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-southeast-3
+      - Fn::Or:
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-southeast-4
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ca-central-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ca-west-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - cn-north-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - cn-northwest-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-central-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-central-2
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-north-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-south-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-south-2
+      - Fn::Or:
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-west-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-west-2
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-west-3
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - il-central-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - me-central-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - me-south-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - sa-east-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - us-east-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - us-east-2
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - us-west-1
+      - Fn::Equals:
+          - Ref: AWS::Region
+          - us-west-2
+Metadata:
+  License: Copyright 2025 Amazon.com, Inc. or its affiliates (collectively, "Amazon"). All Rights Reserved. This software is licensed to you as "AWS Content" under the AWS Customer Agreement (https://aws.amazon.com/agreement/), or other written agreement between you and Amazon governing your use of AWS services, and the AWS Intellectual Property License (https://aws.amazon.com/legal/aws-ip-license-terms/). Licenses for Third-party software used in this template can be viewed at https://solutions-reference.s3.amazonaws.com/spatial-data-management/latest/third-party-licenses_for_cdk.txt
+Mappings:
+  Solution:
+    AssetsConfig:
+      S3AssetBucketBaseName: solutions
+      S3AssetKeyPrefix: spatial-data-management/v1.0.7
