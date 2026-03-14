@@ -209,6 +209,25 @@ export const ConfigProps = z.object({
     .default(null)
     .transform((val) => (val === "" ? null : val))
     .describe("ARN of the SPDA role that will assume the proxy role"),
+  spdaVpcId: z
+    .string()
+    .optional()
+    .nullable()
+    .default(null)
+    .transform((val) => (val === "" ? null : val))
+    .describe("VPC ID for SPDA customer-managed fleet"),
+  spdaSubnetIds: z
+    .array(z.string())
+    .optional()
+    .nullable()
+    .default(null)
+    .transform((val) => (!val || val.length === 0 ? null : val))
+    .describe("Private subnet IDs for SPDA customer-managed fleet"),
+  spdaInstanceType: z
+    .string()
+    .optional()
+    .default("c5.4xlarge")
+    .describe("EC2 instance type for SPDA customer-managed fleet"),
 }).superRefine((data, ctx) => {
   if (data.computeBackend === "spda") {
     if (!data.deadlineFarmId) {
@@ -223,6 +242,20 @@ export const ConfigProps = z.object({
         code: z.ZodIssueCode.custom,
         message: "SPDA_S3_BUCKET_ARNS is required when COMPUTE_BACKEND=spda",
         path: ["spdaS3BucketArns"],
+      });
+    }
+    if (!data.spdaVpcId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "SPDA_VPC_ID is required when COMPUTE_BACKEND=spda",
+        path: ["spdaVpcId"],
+      });
+    }
+    if (!data.spdaSubnetIds || data.spdaSubnetIds.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "SPDA_SUBNET_IDS is required when COMPUTE_BACKEND=spda",
+        path: ["spdaSubnetIds"],
       });
     }
   }
@@ -304,6 +337,11 @@ export function getConfig(customDotEnvPath: string = "") {
       ? process.env.SPDA_S3_BUCKET_ARNS.split(",")
       : undefined,
     spdaRoleArn: process.env.SPDA_ROLE_ARN,
+    spdaVpcId: process.env.SPDA_VPC_ID,
+    spdaSubnetIds: process.env.SPDA_SUBNET_IDS
+      ? process.env.SPDA_SUBNET_IDS.split(",")
+      : undefined,
+    spdaInstanceType: process.env.SPDA_INSTANCE_TYPE,
   });
 }
 
