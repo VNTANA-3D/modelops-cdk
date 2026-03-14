@@ -21,6 +21,7 @@ export function getBackend(type, config = {}) {
     case "eks":
       return new EksBackend(config);
     case "deadline":
+    case "spda":
       return new DeadlineBackend(config);
     case "batch":
     default:

@@ -18,7 +18,7 @@ program
   .addOption(
     new Option("-b, --backend <BACKEND>", "Compute backend to use.")
       .env("COMPUTE_BACKEND")
-      .choices(["batch", "eks", "deadline"])
+      .choices(["batch", "eks", "deadline", "spda"])
       .default("batch"),
   )
   .addOption(
@@ -50,18 +50,18 @@ program
   )
   .action(async (options) => {
     // Load configuration from .env file (provides defaults)
-    dotenv.config({ path: options.config });
+    dotenv.config({ path: options.config, override: true });
 
-    // CLI arguments take precedence (Commander handles env fallback via .env())
-    const computeBackend = options.backend;
-    const stackName = options.stackName;
+    // Re-read values that may have been set by dotenv
+    const computeBackend = process.env.COMPUTE_BACKEND || options.backend;
+    const stackName = process.env.STACK_NAME || options.stackName;
 
-    // Build backend config - CLI args already have env fallbacks via Commander
+    // Build backend config
     const backendConfig = {
-      eksNamespace: options.eksNamespace,
-      eksKubeconfigPath: options.eksKubeconfig || null,
-      deadlineFarmId: options.deadlineFarmId || null,
-      deadlineQueueId: options.deadlineQueueId || null,
+      eksNamespace: process.env.EKS_NAMESPACE || options.eksNamespace,
+      eksKubeconfigPath: process.env.EKS_KUBECONFIG_PATH || options.eksKubeconfig || null,
+      deadlineFarmId: process.env.DEADLINE_FARM_ID || options.deadlineFarmId || null,
+      deadlineQueueId: process.env.DEADLINE_QUEUE_ID || options.deadlineQueueId || null,
     };
 
     const backend = getBackend(computeBackend, backendConfig);

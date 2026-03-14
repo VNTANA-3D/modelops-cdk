@@ -106,6 +106,7 @@ export class DeadlineBackend extends JobBackend {
       queueId: this.#queueId,
       template: renderedTemplate,
       templateType: "YAML",
+      priority: 50,
       parameters: {
         PipelineJson: { string: JSON.stringify(pipeline) },
         Image: { string: image },

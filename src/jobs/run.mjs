@@ -56,7 +56,7 @@ program
   .addOption(
     new Option("-b, --backend <BACKEND>", "Compute backend to use.")
       .env("COMPUTE_BACKEND")
-      .choices(["batch", "eks", "deadline"])
+      .choices(["batch", "eks", "deadline", "spda"])
       .default("batch"),
   )
   .addOption(
@@ -153,27 +153,27 @@ program
   )
   .action(async (pipeline, state, options) => {
     // Load configuration from .env file (provides defaults)
-    dotenv.config({ path: options.config });
+    dotenv.config({ path: options.config, override: true });
 
-    // CLI arguments take precedence (Commander handles env fallback via .env())
-    const computeBackend = options.backend;
-    const stackName = options.stackName;
+    // Re-read values that may have been set by dotenv
+    const computeBackend = process.env.COMPUTE_BACKEND || options.backend;
+    const stackName = process.env.STACK_NAME || options.stackName;
 
-    // Build backend config - CLI args already have env fallbacks via Commander
+    // Build backend config
     const backendConfig = {
       computeBackend,
       stackName,
-      image: options.image,
-      tag: options.tag,
-      region: options.region,
-      jobCpu: parseInt(options.jobCpu, 10),
-      jobMemory: parseInt(options.jobMemory, 10),
-      jobEphemeralStorage: parseInt(options.jobStorage, 10),
-      jobRetryAttempts: parseInt(options.jobRetries, 10),
-      eksNamespace: options.eksNamespace,
-      eksKubeconfigPath: options.eksKubeconfig || null,
-      deadlineFarmId: options.deadlineFarmId || null,
-      deadlineQueueId: options.deadlineQueueId || null,
+      image: process.env.UNSAFE_ECR_IMAGE || options.image,
+      tag: process.env.UNSAFE_ECR_IMAGE_TAG || options.tag,
+      region: process.env.AWS_REGION || options.region,
+      jobCpu: parseInt(process.env.JOB_CPU || options.jobCpu, 10),
+      jobMemory: parseInt(process.env.JOB_MEMORY || options.jobMemory, 10),
+      jobEphemeralStorage: parseInt(process.env.JOB_EPHEMERAL_STORAGE || options.jobStorage, 10),
+      jobRetryAttempts: parseInt(process.env.JOB_RETRY_ATTEMPTS || options.jobRetries, 10),
+      eksNamespace: process.env.EKS_NAMESPACE || options.eksNamespace,
+      eksKubeconfigPath: process.env.EKS_KUBECONFIG_PATH || options.eksKubeconfig || null,
+      deadlineFarmId: process.env.DEADLINE_FARM_ID || options.deadlineFarmId || null,
+      deadlineQueueId: process.env.DEADLINE_QUEUE_ID || options.deadlineQueueId || null,
     };
 
     // Get backend
