@@ -8,7 +8,7 @@ This is an AWS CDK TypeScript project that deploys VNTANA ModelOps infrastructur
 - **AWS Batch with Fargate** - Original serverless container execution
 - **EKS with Karpenter** - Kubernetes-based execution with autoscaling
 - **Deadline Cloud** - AWS Deadline Cloud with own Farm/Queue/Fleet
-- **SPDA** - Reuses an existing SPDA Farm, creates isolated Queue/Fleet/Proxy role
+- **SPDA** - Reuses an existing SPDA Farm, creates isolated Queue + customer-managed Fleet (ASG + Launch Template) + Proxy role
 
 ## Commands
 
@@ -63,11 +63,12 @@ The project supports four backends controlled by `COMPUTE_BACKEND` env var:
 
 **Deadline Cloud (`COMPUTE_BACKEND=deadline`)**
 - `lib/modelops-deadline-stack.ts` - Deadline Cloud stack with Farm/Queue/Fleet
-- `lib/deadline-utils.ts` - Shared pure functions (`renderWorkerScript`, `buildEcrRepoArn`)
+- `lib/deadline-utils.ts` - Shared pure functions (`renderWorkerScript`, `renderCmfUserData`, `buildEcrRepoArn`)
 - Service-managed EC2 fleet with Docker worker boot script
 
 **SPDA (`COMPUTE_BACKEND=spda`)**
-- `lib/modelops-spda-stack.ts` - Reuses existing SPDA Farm, creates own Queue/Fleet
+- `lib/modelops-spda-stack.ts` - Reuses existing SPDA Farm, creates own Queue + customer-managed Fleet
+- Customer-managed fleet: ASG + Launch Template in user's VPC private subnets (see `.claude/context/spda-customer-managed-fleet.md` for details)
 - Creates proxy IAM role (`SpatialDataManagementContentDerivation-ModelOps`) for SPDA Lambda
 - No S3 bucket creation — uses SPDA-managed bucket ARNs from config
 - No `jobAttachmentSettings` on queue — assets accessed via role S3 permissions
@@ -116,6 +117,9 @@ Configuration via `.env` file or environment variables.
 - `DEADLINE_FARM_ID` - Existing SPDA Farm ID (required for `spda` backend)
 - `SPDA_S3_BUCKET_ARNS` - Comma-separated S3 bucket ARNs for asset access (required for `spda` backend)
 - `SPDA_ROLE_ARN` - ARN of the SPDA role that assumes the proxy role (optional, defaults to account root trust)
+- `SPDA_VPC_ID` - VPC ID for customer-managed fleet (required for `spda` backend)
+- `SPDA_SUBNET_IDS` - Comma-separated private subnet IDs for fleet instances (required for `spda` backend)
+- `SPDA_INSTANCE_TYPE` - EC2 instance type for fleet instances (default: c5.4xlarge)
 
 ### Example EKS Configuration
 ```bash
@@ -130,6 +134,9 @@ EKS_NAMESPACE=modelops
 COMPUTE_BACKEND=spda
 DEADLINE_FARM_ID=farm-cee1b7e4af5549be8116bfa7e51f134d
 SPDA_S3_BUCKET_ARNS=arn:aws:s3:::spatialdatamanagement-ass-assetencrypteds3encrypte-b40cky4znngy
+SPDA_VPC_ID=vpc-0abc123def456
+SPDA_SUBNET_IDS=subnet-0d1b73b2081ee359d,subnet-0ed96f37968d817d7
+SPDA_INSTANCE_TYPE=c5.4xlarge
 AWS_ACCOUNT_ID=263408322201
 ```
 
