@@ -5,7 +5,7 @@ import { Construct } from "constructs";
 
 import type { ConfigPropsT } from "./config";
 import { PolicyDocument } from "./validators";
-import { renderWorkerScript, buildEcrRepoArn } from "./deadline-utils";
+import { renderCmfUserData, buildEcrRepoArn } from "./deadline-utils";
 
 type ModelopsSpdaStackPropsT = StackProps & {
   config: Readonly<ConfigPropsT>;
@@ -112,19 +112,13 @@ export class ModelopsSpdaStack extends cdk.Stack {
   }
 
   /**
-   * Creates the fleet — always creates, no skip logic.
+   * Creates a customer-managed fleet and its supporting infrastructure (ASG,
+   * launch template, security group).
    */
   private getFleetId(
     farmId: string,
     fleetRole: cdk.aws_iam.Role,
   ): string {
-    const workerScript = renderWorkerScript({
-      region: this.#config.region,
-      accountId: this.#config.account!,
-      image: this.#config.image,
-      tag: this.#config.tag,
-    });
-
     const fleet = new cdk.aws_deadline.CfnFleet(
       this,
       this.#name + "Fleet",
@@ -135,28 +129,95 @@ export class ModelopsSpdaStack extends cdk.Stack {
         maxWorkerCount: this.#config.deadlineFleetMax,
         minWorkerCount: this.#config.deadlineFleetMin,
         configuration: {
-          serviceManagedEc2: {
-            instanceCapabilities: {
+          customerManaged: {
+            mode: "EVENT_BASED_AUTO_SCALING",
+            workerCapabilities: {
               cpuArchitectureType: "x86_64",
-              memoryMiB: { min: 4096 },
               osFamily: "LINUX",
-              vCpuCount: { min: 4 },
-              rootEbsVolume: {
-                sizeGiB: this.#config.jobEphemeralStorage,
-              },
-            },
-            instanceMarketOptions: {
-              type: "on-demand",
+              vCpuCount: { min: 4, max: 4 },
+              memoryMiB: { min: this.#config.jobMemory * 1024 },
             },
           },
-        },
-        hostConfiguration: {
-          scriptBody: workerScript,
         },
       },
     );
 
+    this.createCmfInfrastructure(farmId, fleet, fleetRole);
+
     return fleet.attrFleetId;
+  }
+
+  /**
+   * Creates the VPC lookup, security group, launch template, and auto scaling
+   * group that back the customer-managed fleet.
+   */
+  private createCmfInfrastructure(
+    farmId: string,
+    fleet: cdk.aws_deadline.CfnFleet,
+    fleetRole: cdk.aws_iam.Role,
+  ) {
+    const vpc = cdk.aws_ec2.Vpc.fromLookup(this, "Vpc", {
+      vpcId: this.#config.spdaVpcId!,
+    });
+
+    const sg = new cdk.aws_ec2.SecurityGroup(this, this.#name + "FleetSg", {
+      vpc,
+      allowAllOutbound: true,
+    });
+
+    const instanceProfile = new cdk.aws_iam.CfnInstanceProfile(
+      this,
+      this.#name + "FleetInstanceProfile",
+      { roles: [fleetRole.roleName] },
+    );
+
+    const userData = renderCmfUserData({
+      region: this.#config.region,
+      accountId: this.#config.account!,
+      image: this.#config.image,
+      tag: this.#config.tag,
+      farmId,
+      fleetId: fleet.attrFleetId,
+    });
+
+    const lt = new cdk.aws_ec2.LaunchTemplate(this, this.#name + "LaunchTemplate", {
+      machineImage: cdk.aws_ec2.MachineImage.latestAmazonLinux2023(),
+      instanceType: new cdk.aws_ec2.InstanceType(this.#config.spdaInstanceType),
+      securityGroup: sg,
+      blockDevices: [
+        {
+          deviceName: "/dev/xvda",
+          volume: cdk.aws_ec2.BlockDeviceVolume.ebs(this.#config.jobEphemeralStorage),
+        },
+      ],
+      userData: cdk.aws_ec2.UserData.custom(userData),
+    });
+
+    // Attach instance profile via L1 escape hatch
+    const cfnLt = lt.node.defaultChild as cdk.aws_ec2.CfnLaunchTemplate;
+    cfnLt.addPropertyOverride(
+      "LaunchTemplateData.IamInstanceProfile.Arn",
+      instanceProfile.attrArn,
+    );
+
+    const subnetIds = this.#config.spdaSubnetIds!;
+
+    new cdk.aws_autoscaling.AutoScalingGroup(this, this.#name + "Asg", {
+      vpc,
+      launchTemplate: lt,
+      minCapacity: 0,
+      maxCapacity: this.#config.deadlineFleetMax,
+      desiredCapacity: 0,
+      autoScalingGroupName: cdk.Fn.join("-", [
+        "deadline-ASG-autoscalable",
+        fleet.attrFleetId,
+      ]),
+      vpcSubnets: {
+        subnets: subnetIds.map((id, i) =>
+          cdk.aws_ec2.Subnet.fromSubnetId(this, `Subnet${i}`, id),
+        ),
+      },
+    });
   }
 
   private createQueueFleetAssociation(
@@ -214,7 +275,11 @@ export class ModelopsSpdaStack extends cdk.Stack {
         assumedBy: new cdk.aws_iam.CompositePrincipal(
           new cdk.aws_iam.ServicePrincipal("deadline.amazonaws.com"),
           new cdk.aws_iam.ServicePrincipal("credentials.deadline.amazonaws.com"),
+          new cdk.aws_iam.ServicePrincipal("ec2.amazonaws.com"),
         ),
+        managedPolicies: [
+          cdk.aws_iam.ManagedPolicy.fromAwsManagedPolicyName("AWSDeadlineCloud-FleetWorker"),
+        ],
       },
     );
 
