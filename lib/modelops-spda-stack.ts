@@ -1,11 +1,8 @@
-import { existsSync, readFileSync } from "fs";
 import * as cdk from "aws-cdk-lib";
 import type { StackProps } from "aws-cdk-lib";
 import { Construct } from "constructs";
 
 import type { ConfigPropsT } from "./config";
-import { PolicyDocument } from "./validators";
-import { renderCmfUserData, buildEcrRepoArn } from "./deadline-utils";
 
 type ModelopsSpdaStackPropsT = StackProps & {
   config: Readonly<ConfigPropsT>;
@@ -38,11 +35,9 @@ export class ModelopsSpdaStack extends cdk.Stack {
     }
 
     const farmId = this.#config.deadlineFarmId!;
-    const logGroup = this.getLogGroup();
     const queueRole = this.getQueueRole();
-    const fleetRole = this.getFleetRole(logGroup);
     const queueId = this.getQueueId(farmId, queueRole);
-    const fleetId = this.getFleetId(farmId, fleetRole);
+    const fleetId = this.getFleetId();
     this.createQueueFleetAssociation(farmId, queueId, fleetId);
     const proxyRole = this.getProxyRole();
 
@@ -63,30 +58,8 @@ export class ModelopsSpdaStack extends cdk.Stack {
       value: queueRole.roleArn,
     });
 
-    new cdk.CfnOutput(this, this.#name + "FleetRoleArn", {
-      value: fleetRole.roleArn,
-    });
-
     new cdk.CfnOutput(this, this.#name + "ProxyRoleArn", {
       value: proxyRole.roleArn,
-    });
-
-    new cdk.CfnOutput(this, this.#name + "LogGroupName", {
-      value: logGroup.logGroupName,
-    });
-
-    new cdk.CfnOutput(this, this.#name + "LogGroupArn", {
-      value: logGroup.logGroupArn,
-    });
-  }
-
-  private getLogGroup() {
-    const logGroupName = this.#name + "LogGroup";
-    return new cdk.aws_logs.LogGroup(this, logGroupName, {
-      logGroupName:
-        this.#config.logGroupName || "/deadline/modelops/spda/jobs",
-      retention: cdk.aws_logs.RetentionDays.ONE_WEEK,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
   }
 
@@ -112,112 +85,15 @@ export class ModelopsSpdaStack extends cdk.Stack {
   }
 
   /**
-   * Creates a customer-managed fleet and its supporting infrastructure (ASG,
-   * launch template, security group).
+   * Returns the existing SPDA fleet ID from config.
+   *
+   * WORKAROUND: The SPDA fleet (spatial-data-management-main-fleet) is managed
+   * by SPDA, not by this stack. We reference it by ID and update its host
+   * configuration script separately via the AWS CLI. See
+   * scripts/update-spda-fleet-host-config.sh for details.
    */
-  private getFleetId(
-    farmId: string,
-    fleetRole: cdk.aws_iam.Role,
-  ): string {
-    const fleet = new cdk.aws_deadline.CfnFleet(
-      this,
-      this.#name + "Fleet",
-      {
-        displayName: `${this.#name}-spda-fleet`,
-        farmId,
-        roleArn: fleetRole.roleArn,
-        maxWorkerCount: this.#config.deadlineFleetMax,
-        minWorkerCount: this.#config.deadlineFleetMin,
-        configuration: {
-          customerManaged: {
-            mode: "EVENT_BASED_AUTO_SCALING",
-            workerCapabilities: {
-              cpuArchitectureType: "x86_64",
-              osFamily: "LINUX",
-              vCpuCount: { min: 4, max: 4 },
-              memoryMiB: { min: this.#config.jobMemory * 1024 },
-            },
-          },
-        },
-      },
-    );
-
-    this.createCmfInfrastructure(farmId, fleet, fleetRole);
-
-    return fleet.attrFleetId;
-  }
-
-  /**
-   * Creates the VPC lookup, security group, launch template, and auto scaling
-   * group that back the customer-managed fleet.
-   */
-  private createCmfInfrastructure(
-    farmId: string,
-    fleet: cdk.aws_deadline.CfnFleet,
-    fleetRole: cdk.aws_iam.Role,
-  ) {
-    const vpc = cdk.aws_ec2.Vpc.fromLookup(this, "Vpc", {
-      vpcId: this.#config.spdaVpcId!,
-    });
-
-    const sg = new cdk.aws_ec2.SecurityGroup(this, this.#name + "FleetSg", {
-      vpc,
-      allowAllOutbound: true,
-    });
-
-    const instanceProfile = new cdk.aws_iam.CfnInstanceProfile(
-      this,
-      this.#name + "FleetInstanceProfile",
-      { roles: [fleetRole.roleName] },
-    );
-
-    const userData = renderCmfUserData({
-      region: this.#config.region,
-      accountId: this.#config.account!,
-      image: this.#config.image,
-      tag: this.#config.tag,
-      farmId,
-      fleetId: fleet.attrFleetId,
-    });
-
-    const lt = new cdk.aws_ec2.LaunchTemplate(this, this.#name + "LaunchTemplate", {
-      machineImage: cdk.aws_ec2.MachineImage.latestAmazonLinux2023(),
-      instanceType: new cdk.aws_ec2.InstanceType(this.#config.spdaInstanceType),
-      securityGroup: sg,
-      blockDevices: [
-        {
-          deviceName: "/dev/xvda",
-          volume: cdk.aws_ec2.BlockDeviceVolume.ebs(this.#config.jobEphemeralStorage),
-        },
-      ],
-      userData: cdk.aws_ec2.UserData.custom(userData),
-    });
-
-    // Attach instance profile via L1 escape hatch
-    const cfnLt = lt.node.defaultChild as cdk.aws_ec2.CfnLaunchTemplate;
-    cfnLt.addPropertyOverride(
-      "LaunchTemplateData.IamInstanceProfile.Arn",
-      instanceProfile.attrArn,
-    );
-
-    const subnetIds = this.#config.spdaSubnetIds!;
-
-    new cdk.aws_autoscaling.AutoScalingGroup(this, this.#name + "Asg", {
-      vpc,
-      launchTemplate: lt,
-      minCapacity: 0,
-      maxCapacity: this.#config.deadlineFleetMax,
-      desiredCapacity: 0,
-      autoScalingGroupName: cdk.Fn.join("-", [
-        "deadline-ASG-autoscalable",
-        fleet.attrFleetId,
-      ]),
-      vpcSubnets: {
-        subnets: subnetIds.map((id, i) =>
-          cdk.aws_ec2.Subnet.fromSubnetId(this, `Subnet${i}`, id),
-        ),
-      },
-    });
+  private getFleetId(): string {
+    return this.#config.deadlineFleetId!;
   }
 
   private createQueueFleetAssociation(
@@ -259,103 +135,6 @@ export class ModelopsSpdaStack extends cdk.Stack {
         resources: bucketResources,
       }),
     );
-
-    return role;
-  }
-
-  /**
-   * IAM role assumed by fleet workers — grants CloudWatch logging, S3 access
-   * to SPDA buckets, ECR pull, and Marketplace metering.
-   */
-  private getFleetRole(logGroup: cdk.aws_logs.LogGroup) {
-    const role = new cdk.aws_iam.Role(
-      this,
-      this.#name + "FleetRole",
-      {
-        assumedBy: new cdk.aws_iam.CompositePrincipal(
-          new cdk.aws_iam.ServicePrincipal("deadline.amazonaws.com"),
-          new cdk.aws_iam.ServicePrincipal("credentials.deadline.amazonaws.com"),
-          new cdk.aws_iam.ServicePrincipal("ec2.amazonaws.com"),
-        ),
-        managedPolicies: [
-          cdk.aws_iam.ManagedPolicy.fromAwsManagedPolicyName("AWSDeadlineCloud-FleetWorker"),
-        ],
-      },
-    );
-
-    // CloudWatch Logs
-    role.addToPolicy(
-      new cdk.aws_iam.PolicyStatement({
-        actions: [
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-        ],
-        resources: [logGroup.logGroupArn, `${logGroup.logGroupArn}:*`],
-      }),
-    );
-
-    // S3 access to SPDA buckets
-    const bucketArns = this.#config.spdaS3BucketArns!;
-    const bucketResources = bucketArns.flatMap((arn) => [arn, `${arn}/*`]);
-    role.addToPolicy(
-      new cdk.aws_iam.PolicyStatement({
-        actions: ["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
-        resources: bucketResources,
-      }),
-    );
-
-    // ECR -- account-wide auth token
-    role.addToPolicy(
-      new cdk.aws_iam.PolicyStatement({
-        actions: ["ecr:GetAuthorizationToken"],
-        resources: ["*"],
-      }),
-    );
-
-    // ECR -- scoped image pull for private repo + Marketplace (account 709825985650)
-    const ecrRepoArn = buildEcrRepoArn(this.#config.image, this.#config.region, this.#config.account!);
-    const marketplaceEcrArn = `arn:aws:ecr:${this.#config.region}:709825985650:repository/*`;
-    role.addToPolicy(
-      new cdk.aws_iam.PolicyStatement({
-        actions: [
-          "ecr:BatchGetImage",
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:BatchCheckLayerAvailability",
-        ],
-        resources: [ecrRepoArn, marketplaceEcrArn],
-      }),
-    );
-
-    // AWS Marketplace metering
-    role.addToPolicy(
-      new cdk.aws_iam.PolicyStatement({
-        actions: [
-          "aws-marketplace:RegisterUsage",
-          "aws-marketplace:MeterUsage",
-        ],
-        resources: ["*"],
-      }),
-    );
-
-    // Custom policy file support
-    if (this.#config.jobPolicyFile && existsSync(this.#config.jobPolicyFile)) {
-      const policyDocument = PolicyDocument.parse(
-        JSON.parse(readFileSync(this.#config.jobPolicyFile, "utf-8")),
-      );
-
-      for (const statement of policyDocument.Statement) {
-        role.addToPolicy(
-          new cdk.aws_iam.PolicyStatement({
-            actions: Array.isArray(statement.Action)
-              ? statement.Action
-              : [statement.Action],
-            resources: Array.isArray(statement.Resource)
-              ? statement.Resource
-              : [statement.Resource],
-          }),
-        );
-      }
-    }
 
     return role;
   }

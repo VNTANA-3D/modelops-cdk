@@ -1,4 +1,4 @@
-import { renderWorkerScript, renderCmfUserData, buildEcrRepoArn } from "../lib/deadline-utils";
+import { renderWorkerScript, buildEcrRepoArn } from "../lib/deadline-utils";
 
 describe("renderWorkerScript", () => {
   const vars = {
@@ -31,53 +31,10 @@ describe("renderWorkerScript", () => {
     const script = renderWorkerScript(vars);
     expect(script).toContain(`docker pull "${vars.image}:${vars.tag}"`);
   });
-});
 
-describe("renderCmfUserData", () => {
-  const vars = {
-    region: "us-east-1",
-    accountId: "123456789012",
-    image: "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-repo",
-    tag: "latest",
-    farmId: "farm-abc123",
-    fleetId: "fleet-xyz789",
-  };
-
-  it("starts with bash shebang and strict mode", () => {
-    const script = renderCmfUserData(vars);
-    expect(script).toMatch(/^#!\/bin\/bash\nset -euo pipefail/);
-  });
-
-  it("installs deadline-cloud-worker-agent via pip", () => {
-    const script = renderCmfUserData(vars);
-    expect(script).toContain("pip install deadline-cloud-worker-agent");
-  });
-
-  it("includes customer ECR login", () => {
-    const script = renderCmfUserData(vars);
-    expect(script).toContain(
-      `${vars.accountId}.dkr.ecr.${vars.region}.amazonaws.com`,
-    );
-  });
-
-  it("includes Marketplace ECR login", () => {
-    const script = renderCmfUserData(vars);
-    expect(script).toContain(
-      "709825985650.dkr.ecr.us-east-1.amazonaws.com",
-    );
-  });
-
-  it("includes docker pull with correct image:tag", () => {
-    const script = renderCmfUserData(vars);
-    expect(script).toContain(`docker pull "${vars.image}:${vars.tag}"`);
-  });
-
-  it("runs install-deadline-worker with correct flags", () => {
-    const script = renderCmfUserData(vars);
-    expect(script).toContain(`--farm-id ${vars.farmId}`);
-    expect(script).toContain(`--fleet-id ${vars.fleetId}`);
-    expect(script).toContain(`--region ${vars.region}`);
-    expect(script).toContain("--allow-shutdown");
+  it("adds job-user to docker group", () => {
+    const script = renderWorkerScript(vars);
+    expect(script).toContain("usermod -aG docker job-user");
   });
 });
 
