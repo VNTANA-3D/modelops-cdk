@@ -24,6 +24,7 @@
     "@aws-cdk/lambda-layer-kubectl-v32": "^2.1.0",
     "@aws-sdk/client-cloudwatch-logs": "^3.700.0",
     "@aws-sdk/client-deadline": "^3.700.0",
+    "@aws-sdk/client-ecs": "^3.1026.0",
     "aws-cdk-lib": "^2.233.0",
     "commander": "^12.1.0",
     "console-table-printer": "^2.12.1",

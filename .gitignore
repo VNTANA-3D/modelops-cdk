@@ -13,3 +13,6 @@ cdk.out
 .envrc
 .local
 .claude/settings.local.json
+.claude/shaping/*
+graeme/*
+.DS_Store
