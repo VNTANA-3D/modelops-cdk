@@ -17,7 +17,7 @@ steps:
     script:
       actions:
         onRun:
-          command: bash
+          command: /bin/bash
           args:
             - '{{Task.File.RunScript}}'
       embeddedFiles:
@@ -27,7 +27,28 @@ steps:
           data: |
             #!/bin/bash
             set -euo pipefail
-            echo '{{Param.PipelineJson}}' | docker run --rm -i \
+
+            # Extract registry from image URI and authenticate
+            REGISTRY="$(echo '{{Param.Image}}' | cut -d/ -f1)"
+            REGION="$(echo "$REGISTRY" | cut -d. -f4)"
+            aws ecr get-login-password --region "$REGION" | \
+              /usr/bin/docker login --username AWS --password-stdin "$REGISTRY"
+
+            # Write pipeline JSON to file to avoid shell quoting issues
+            cat > /tmp/pipeline.json << 'PIPELINE_EOF'
+            {{Param.PipelineJson}}
+            PIPELINE_EOF
+
+            # Export queue role credentials for the Docker container
+            CREDS="$(aws configure export-credentials --format env-no-export 2>/dev/null)" || true
+            eval "$CREDS"
+
+            /usr/bin/docker run --rm -i \
               -v "$(pwd):/workspace" \
+              -e AWS_REGION="$REGION" \
+              -e AWS_DEFAULT_REGION="$REGION" \
+              -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+              -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+              -e AWS_SESSION_TOKEN="$AWS_SESSION_TOKEN" \
               '{{Param.Image}}' \
-              -i json --logger '{{Param.Logger}}' {{Param.DebugFlag}}
+              /home/app/apps/handler/dist/index.js -i json --logger '{{Param.Logger}}' {{Param.DebugFlag}} < /tmp/pipeline.json
