@@ -4,137 +4,111 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an AWS CDK TypeScript project that deploys VNTANA ModelOps infrastructure for processing 3D assets. It supports multiple compute backends:
-- **AWS Batch with Fargate** - Original serverless container execution
-- **EKS with Karpenter** - Kubernetes-based execution with autoscaling
-- **Deadline Cloud** - AWS Deadline Cloud with own Farm/Queue/Fleet
-- **SPDA** - Reuses existing SPDA Farm + Fleet, creates own Queue + Proxy role (see `.claude/context/spda-shared-fleet.md`)
+AWS CDK TypeScript project that deploys VNTANA ModelOps infrastructure for processing 3D assets. Four compute backends are selectable via `COMPUTE_BACKEND`:
+
+| Backend | Stack | What it is |
+|---|---|---|
+| `batch` | `lib/modelops-handler.ts` | AWS Batch on Fargate (default, serverless) |
+| `eks` | `lib/modelops-eks-stack.ts` | EKS with Karpenter autoscaling — see [`.claude/context/aws_deadline_eks-cluster.md`](.claude/context/aws_deadline_eks-cluster.md) |
+| `deadline` | `lib/modelops-deadline-stack.ts` | AWS Deadline Cloud with its own Farm/Queue/Fleet |
+| `spda` | `lib/modelops-spda-stack.ts` | Reuses SPDA Farm+Fleet, runs a Deadline-to-ECS bridge — see [`.claude/context/spda-shared-fleet.md`](.claude/context/spda-shared-fleet.md) and [`.claude/context/spda-ecs-bridge.md`](.claude/context/spda-ecs-bridge.md) |
 
 ## Commands
 
 ### Build and Development
 ```bash
-npm run build          # Compile TypeScript
-npm run watch          # Watch mode compilation
-npm run test           # Run Jest tests
-npm install            # Install dependencies (includes mustache for EKS)
+bun install            # Install dependencies (bun is the package manager)
+bun run build          # Compile TypeScript
+bun run watch          # Watch mode compilation
+bun run test           # Run Jest tests (includes .mjs unit tests)
 ```
 
-### CDK Operations (via CLI wrapper)
+### CDK Operations
 ```bash
-./index.mjs deploy              # Synthesize and deploy the stack
-./index.mjs deploy --bootstrap  # Bootstrap CDK (first-time setup)
-./index.mjs destroy             # Tear down the stack
+./index.mjs -c .env.spda deploy              # Synthesize and deploy a stack
+./index.mjs -c .env.spda deploy --bootstrap  # First-time CDK bootstrap
+./index.mjs -c .env.spda destroy             # Tear down
 ```
 
-### Direct CDK (alternative)
-```bash
-export MODELOPS_CONFIG="./.env"
-npx cdk synth --app 'npx ts-node --prefer-ts-exts bin/modelops-handler.ts'
-npx cdk deploy --app 'npx ts-node --prefer-ts-exts bin/modelops-handler.ts'
-```
+The top-level `-c/--config` flag (also `MODELOPS_CONFIG` env var) loads a dotenv file before any subcommand runs.
 
 ### Job Management
 ```bash
 ./index.mjs jobs run <pipeline_name>           # Run a pipeline from ./pipelines/
 ./index.mjs jobs run <pipeline_name> --watch   # Run and wait for completion
-./index.mjs jobs list                          # List running jobs
-./index.mjs jobs describe <job_id>             # Get job details
-./index.mjs jobs logs <job_id>                 # View job logs
+./index.mjs jobs list                          # List recent jobs
+./index.mjs jobs describe <job_id>             # Formatted summary
+./index.mjs jobs describe <job_id> --json      # Raw JSON
+./index.mjs jobs logs <job_id>                 # View logs (interleaved [brg]/[ecs] on deadline/spda)
+./index.mjs jobs watch <job_id>                # Poll until completion, then print logs
 ```
+
+For deadline/spda backends, these commands enrich output with ECS task details and merge bridge + container logs. See [`.claude/context/cli-job-tracking.md`](.claude/context/cli-job-tracking.md) for the full command surface, status mapping, and internals.
 
 ## Architecture
 
-### Compute Backends
-The project supports four backends controlled by `COMPUTE_BACKEND` env var:
+### CDK Entry Points
+- `bin/modelops-handler.ts` — CDK app entry point; conditionally instantiates the selected stack
+- `lib/config.ts` — Zod schema; loads from `.env` and validates backend-specific fields
+- `lib/validators.ts` — IAM policy document validators
+- `lib/deadline-utils.ts` — Shared pure helpers (`renderWorkerScript`, `buildEcrRepoArn`)
 
-**AWS Batch (`COMPUTE_BACKEND=batch`)**
-- `lib/modelops-handler.ts` - Main Batch/Fargate stack
-- Uses AWS Batch job queue and job definitions
-- Serverless execution via Fargate
+### CLI Layout
+- `index.mjs` — Commander entry point with the `-c` dotenv hook
+- `src/jobs/backends/` — Backend abstraction
+  - `base.mjs` — `JobBackend` base class
+  - `index.mjs` — `getBackend(type, config)` factory
+  - `batch.mjs`, `eks.mjs`, `deadline.mjs` — Implementations (SPDA reuses `DeadlineBackend`)
+- `src/jobs/run.mjs`, `list.mjs`, `describe.mjs`, `logs.mjs`, `watch.mjs` — Commands
 
-**EKS (`COMPUTE_BACKEND=eks`)**
-- `lib/modelops-eks-stack.ts` - EKS cluster with Karpenter
-- `lib/karpenter.ts` - NodePool and EC2NodeClass helpers
-- Uses Kubernetes Jobs for execution
-- Kubernetes version: 1.31 (see `.claude/context/eks-cluster.md` for upgrade guide)
-- c5.4xlarge nodes with scale-to-zero via Karpenter
-- Bootstrap node group (t3.small) for system workloads
-
-**Deadline Cloud (`COMPUTE_BACKEND=deadline`)**
-- `lib/modelops-deadline-stack.ts` - Deadline Cloud stack with Farm/Queue/Fleet
-- `lib/deadline-utils.ts` - Shared pure functions (`renderWorkerScript`, `buildEcrRepoArn`)
-- Service-managed EC2 fleet with Docker worker boot script
-
-**SPDA (`COMPUTE_BACKEND=spda`)**
-- `lib/modelops-spda-stack.ts` - Reuses existing SPDA Farm AND Fleet, creates own Queue + Proxy role
-- Uses the shared `spatial-data-management-main-fleet` (not a separate fleet)
-- Host config script updated via Deadline Console (`scripts/update-spda-fleet-host-config.sh` generates it)
-- Creates proxy IAM role (`SpatialDataManagementContentDerivation-ModelOps`) for SPDA Lambda
-- No S3 bucket creation — uses SPDA-managed bucket ARNs from config
-- Worker logs visible via Deadline Monitor (no custom log group)
-
-### CDK Infrastructure (TypeScript)
-- `bin/modelops-handler.ts` - CDK app entry point, conditionally creates Batch, EKS, Deadline, or SPDA stack
-- `lib/config.ts` - Configuration schema using Zod, loads from `.env` files
-- `lib/validators.ts` - IAM policy document validators
-
-### CLI (JavaScript/ESM)
-- `index.mjs` - Main CLI entry point using Commander.js
-- `src/jobs/backends/` - Backend abstraction layer
-  - `index.mjs` - Factory function `getBackend(type, config)`
-  - `batch.mjs` - AWS Batch backend
-  - `eks.mjs` - EKS/Kubernetes backend
-- `src/jobs/` - Job management commands (run, list, describe, logs)
-
-### Kubernetes Manifests
-- `k8s/job-template.yaml` - Mustache template for Kubernetes Jobs
-- `k8s/namespace.yaml` - Reference for namespace/ServiceAccount
-
-### Pipelines
-Pipeline definitions in `./pipelines/*.yaml` define task sequences for 3D processing. Both backends use the same pipeline format.
+### Job Template and Pipelines
+- `deadline/job-template.yaml` — OpenJD template for the plain `deadline` backend (runs Docker directly on the worker)
+- `deadline/spda-ecs-bridge-template.yaml` — OpenJD template used by SPDA; its embedded script launches the ECS bridge
+- `pipelines/*.yaml` — Handler task sequences — see [`pipelines/README.md`](pipelines/README.md) for the format and the state variables the SPDA bridge injects
+- `k8s/job-template.yaml` — Mustache template for EKS Kubernetes Jobs
 
 ## Configuration
 
-Configuration via `.env` file or environment variables.
+Configuration via a dotenv file selected with `-c` or `MODELOPS_CONFIG`. `lib/config.ts` is the authoritative schema — backend-specific fields are validated in its `superRefine` block.
 
-### Common Settings
-- `STACK_NAME` - CloudFormation stack name
-- `AWS_ACCOUNT_ID`, `AWS_REGION` - Target AWS account
-- `COMPUTE_BACKEND` - `batch`, `eks`, `deadline`, or `spda`
-- `VPC_ID` or `USE_DEFAULT_VPC` - Network configuration
-- `JOB_MEMORY`, `JOB_CPU`, `JOB_EPHEMERAL_STORAGE` - Job resources
-- `JOB_POLICY_FILE` - Path to custom IAM policy
+### Core Settings
+- `STACK_NAME`, `AWS_ACCOUNT_ID`, `AWS_REGION`
+- `COMPUTE_BACKEND` — `batch` | `eks` | `deadline` | `spda`
+- `VPC_ID` or `USE_DEFAULT_VPC`
+- `JOB_MEMORY`, `JOB_CPU`, `JOB_EPHEMERAL_STORAGE`
+- `JOB_POLICY_FILE` — path to custom IAM policy
 
-### EKS-Specific Settings
-- `EKS_CREATE_VPC` - Create new VPC with NAT Gateway (true/false)
-- `EKS_VPC_CIDR` - CIDR for new VPC (default: 10.0.0.0/16)
-- `EKS_CLUSTER_NAME` - EKS cluster name
-- `EKS_NAMESPACE` - Kubernetes namespace for jobs (default: modelops)
-- `EKS_NODE_INSTANCE_TYPE` - Node instance type (default: c5.4xlarge)
-- `EKS_KUBECONFIG_PATH` - Path to kubeconfig (optional)
+### Backend-Specific Settings
 
-### SPDA-Specific Settings
-- `DEADLINE_FARM_ID` - Existing SPDA Farm ID (required for `spda` backend)
-- `DEADLINE_FLEET_ID` - Existing SPDA Fleet ID (required for `spda` backend)
-- `SPDA_S3_BUCKET_ARNS` - Comma-separated S3 bucket ARNs for asset access (required for `spda` backend)
-- `SPDA_ROLE_ARN` - ARN of the SPDA role that assumes the proxy role (optional, defaults to account root trust)
+Rather than list every flag here, refer to:
 
-### Example EKS Configuration
-```bash
-COMPUTE_BACKEND=eks
-EKS_CREATE_VPC=true
-EKS_CLUSTER_NAME=modelops-cluster
-EKS_NAMESPACE=modelops
-```
+- **EKS** — `EKS_*` variables validated in `lib/config.ts`; see [`.claude/context/aws_deadline_eks-cluster.md`](.claude/context/aws_deadline_eks-cluster.md)
+- **SPDA** — `DEADLINE_FARM_ID`, `DEADLINE_FLEET_ID`, `SPDA_S3_BUCKET_ARNS`, `SPDA_ROLE_ARN`, `SPDA_STAGING_BUCKET`, plus VPC; see [`.claude/context/spda-ecs-bridge.md`](.claude/context/spda-ecs-bridge.md)
 
 ### Example SPDA Configuration
 ```bash
 COMPUTE_BACKEND=spda
-DEADLINE_FARM_ID=farm-cee1b7e4af5549be8116bfa7e51f134d
-DEADLINE_FLEET_ID=fleet-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-SPDA_S3_BUCKET_ARNS=arn:aws:s3:::spatialdatamanagement-ass-assetencrypteds3encrypte-b40cky4znngy
+STACK_NAME=ModelopsHandler
 AWS_ACCOUNT_ID=263408322201
+AWS_REGION=us-east-1
+DEADLINE_FARM_ID=farm-cee1b7e4af5549be8116bfa7e51f134d
+DEADLINE_FLEET_ID=fleet-ecdd62d55d0746c7b8d1e6e853bd133d
+SPDA_S3_BUCKET_ARNS=arn:aws:s3:::spatialdatamanagement-ass-assetencrypteds3encrypte-b40cky4znngy
+SPDA_STAGING_BUCKET=development.modelops.vntana.com
+USE_DEFAULT_VPC=true
 ```
 
-See README.md and example.env for full configuration reference.
+See `README.md` and `example.env` for the full reference.
+
+## Context Index
+
+Drill-down docs under `.claude/context/`:
+
+- [`spda-shared-fleet.md`](.claude/context/spda-shared-fleet.md) — Why SPDA reuses the shared fleet and how to maintain the host config script
+- [`spda-ecs-bridge.md`](.claude/context/spda-ecs-bridge.md) — Deadline-to-ECS bridge architecture, staging layout, SDMA integration gotchas
+- [`cli-job-tracking.md`](.claude/context/cli-job-tracking.md) — CLI ECS tracking commands, status mapping, internals
+- [`aws_deadline_eks-cluster.md`](.claude/context/aws_deadline_eks-cluster.md) — EKS cluster upgrade guide
+- `aws_deadline_*.md` — Snapshot of AWS Deadline Cloud documentation (concepts, fleet/queue/farm setup, pipeline integration, submitter, monitor onboarding)
+
+Additional component-level docs:
+- [`pipelines/README.md`](pipelines/README.md) — Pipeline format and SPDA bridge state injection
