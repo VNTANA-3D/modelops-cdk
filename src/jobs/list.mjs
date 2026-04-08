@@ -1,5 +1,4 @@
 import { Command, Option } from "commander";
-import * as dotenv from "dotenv";
 import { Table } from "console-table-printer";
 import dayjs from "dayjs";
 
@@ -43,16 +42,7 @@ program
     "Time from `x` amount of time ago (e.g. `1 day`.)",
     "12 hours ago",
   )
-  .addOption(
-    new Option("-c, --config <CONFIG>", "Path to the configuration file.")
-      .env("MODELOPS_CONFIG")
-      .default("./.env"),
-  )
   .action(async (options) => {
-    // Load configuration from .env file (provides defaults)
-    dotenv.config({ path: options.config, override: true });
-
-    // Re-read values that may have been set by dotenv
     const computeBackend = process.env.COMPUTE_BACKEND || options.backend;
     const stackName = process.env.STACK_NAME || options.stackName;
 
@@ -94,6 +84,7 @@ program
         "jobId",
         "jobName",
         "status",
+        "deadlineStatus",
         "createdAt",
         "stoppedAt",
         "startedAt",
@@ -112,6 +103,11 @@ program
         },
         {
           name: "status",
+          alignment: "center",
+        },
+        {
+          name: "deadlineStatus",
+          title: "deadline",
           alignment: "center",
         },
         {

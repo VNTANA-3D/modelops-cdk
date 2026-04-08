@@ -1,5 +1,4 @@
 import { Command, Option } from "commander";
-import * as dotenv from "dotenv";
 
 import { getBackend } from "./backends/index.mjs";
 
@@ -52,16 +51,7 @@ program
     new Option("--deadline-queue-id <QUEUE_ID>", "Deadline Cloud queue ID.")
       .env("DEADLINE_QUEUE_ID"),
   )
-  .addOption(
-    new Option("-c, --config <CONFIG>", "Path to the configuration file.")
-      .env("MODELOPS_CONFIG")
-      .default("./.env"),
-  )
   .action(async (jobId, options) => {
-    // Load configuration from .env file (provides defaults)
-    dotenv.config({ path: options.config, override: true });
-
-    // Re-read values that may have been set by dotenv
     const computeBackend = process.env.COMPUTE_BACKEND || options.backend;
 
     // Build backend config

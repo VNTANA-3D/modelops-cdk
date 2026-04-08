@@ -1,7 +1,7 @@
 import { Command, Option } from "commander";
-import * as dotenv from "dotenv";
 
 import { getBackend } from "./backends/index.mjs";
+import { formatJobDescription } from "./backends/deadline.mjs";
 
 export const program = new Command();
 
@@ -48,15 +48,9 @@ program
       .env("DEADLINE_QUEUE_ID"),
   )
   .addOption(
-    new Option("-c, --config <CONFIG>", "Path to the configuration file.")
-      .env("MODELOPS_CONFIG")
-      .default("./.env"),
+    new Option("--json", "Output raw JSON instead of human-readable format."),
   )
   .action(async (jobId, options) => {
-    // Load configuration from .env file (provides defaults)
-    dotenv.config({ path: options.config, override: true });
-
-    // Re-read values that may have been set by dotenv
     const computeBackend = process.env.COMPUTE_BACKEND || options.backend;
 
     // Build backend config
@@ -77,5 +71,9 @@ program
       process.exit(1);
     }
 
-    console.log(JSON.stringify(job, null, 2));
+    if (options.json) {
+      console.log(JSON.stringify(job, null, 2));
+    } else {
+      console.log(formatJobDescription(job));
+    }
   });
