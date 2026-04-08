@@ -39,6 +39,12 @@ The SPDA stack (`lib/modelops-spda-stack.ts`) creates:
 | `CfnQueueFleetAssociation` | Links our queue to the existing SPDA fleet |
 | Queue IAM Role | S3 access to SPDA bucket ARNs |
 | Proxy IAM Role | Assumed by SPDA Lambda to submit Deadline jobs |
+| ECS Cluster | Runs Fargate tasks launched by the bridge script |
+| Fargate Task Definition | Container config with CPU, memory, image, and environment |
+| ECS Task Role | Grants S3 and Marketplace permissions to the running container |
+| ECS Execution Role | Allows ECS to pull images from ECR and write CloudWatch logs |
+| ECS Security Group | Network rules for Fargate tasks within the VPC |
+| CloudWatch Log Group | Container logs at `/deadline-ecs-bridge/tasks` |
 
 Resources we do NOT create (managed by SPDA):
 
@@ -46,7 +52,6 @@ Resources we do NOT create (managed by SPDA):
 |----------|---------|
 | `CfnFleet` | Using existing SPDA fleet |
 | Fleet IAM Role | Managed by SPDA; requires ECR pull permissions (see setup) |
-| CloudWatch Log Group | Worker logs visible via Deadline Monitor |
 
 ## Fleet Role Permissions
 
@@ -57,10 +62,29 @@ This must be configured on the SPDA side (not in our stack). Required permission
 - `ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer`, `ecr:BatchCheckLayerAvailability`
   (resource: our ECR repo ARN + Marketplace ECR `709825985650`)
 
+## Connector Setup
+
+The connector generator script produces a JSON connector file for SPDA integration.
+
+```bash
+./scripts/generate-spda-connector.sh .env.spda
+```
+
+The script reads stack outputs (queue ID, proxy role ARN, ECS cluster, task definition, subnets,
+security group) and generates most fields automatically. You must fill in these fields manually:
+
+- `templateAssetId` — the SPDA asset ID for the job template
+- `templateProjectId` — the SPDA project ID
+- `deadlineMonitorUrl` — URL of the Deadline Monitor webapp
+- `template` — path to the ECS bridge job template (`deadline/spda-ecs-bridge-template.yaml`)
+
+The ECS bridge job template at `deadline/spda-ecs-bridge-template.yaml` defines the worker script
+that launches an ECS Fargate task and streams its logs back to the Deadline session.
+
 ## Observability
 
-Worker boot logs are visible in the **Deadline Monitor** webapp. No custom CloudWatch
-log group is needed. Navigate to: Farm → Fleet → Worker → "Worker Log".
+ECS container logs stream to CloudWatch at `/deadline-ecs-bridge/tasks`. Worker boot logs
+remain visible in the **Deadline Monitor** webapp at: Farm → Fleet → Worker → "Worker Log".
 
 ## Configuration
 

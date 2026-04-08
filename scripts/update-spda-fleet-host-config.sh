@@ -43,7 +43,7 @@ source "$DOTENV_FILE"
 
 # Default image coordinates (same defaults as lib/config.ts)
 IMAGE="${UNSAFE_ECR_IMAGE:-709825985650.dkr.ecr.us-east-1.amazonaws.com/vntana/vntana-v98543}"
-TAG="${UNSAFE_ECR_IMAGE_TAG:-20251203.1}"
+TAG="${UNSAFE_ECR_IMAGE_TAG:-20260324.1}"
 
 # Build the host configuration script
 # This is the same script that renderWorkerScript() produces in lib/deadline-utils.ts

@@ -21,7 +21,7 @@ export const ConfigProps = z.object({
     .default(
       "709825985650.dkr.ecr.us-east-1.amazonaws.com/vntana/vntana-v98543",
     ),
-  tag: z.string().default("20251203.1"),
+  tag: z.string().default("20260324.1"),
   // Flags
   useDefaultVpc: z
     .boolean()
@@ -209,6 +209,13 @@ export const ConfigProps = z.object({
     .default(null)
     .transform((val) => (val === "" ? null : val))
     .describe("ARN of the SPDA role that will assume the proxy role"),
+  spdaStagingBucket: z
+    .string()
+    .optional()
+    .nullable()
+    .default(null)
+    .transform((val) => (val === "" ? null : val))
+    .describe("S3 bucket for staging inputs/outputs between Deadline workers and ECS containers"),
 }).superRefine((data, ctx) => {
   if (data.computeBackend === "spda") {
     if (!data.deadlineFarmId) {
@@ -230,6 +237,20 @@ export const ConfigProps = z.object({
         code: z.ZodIssueCode.custom,
         message: "SPDA_S3_BUCKET_ARNS is required when COMPUTE_BACKEND=spda",
         path: ["spdaS3BucketArns"],
+      });
+    }
+    if (!data.spdaStagingBucket) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "SPDA_STAGING_BUCKET is required when COMPUTE_BACKEND=spda",
+        path: ["spdaStagingBucket"],
+      });
+    }
+    if (!data.vpcId && !data.useDefaultVpc) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "VPC_ID or USE_DEFAULT_VPC is required when COMPUTE_BACKEND=spda",
+        path: ["vpcId"],
       });
     }
   }
@@ -311,6 +332,7 @@ export function getConfig(customDotEnvPath: string = "") {
       ? process.env.SPDA_S3_BUCKET_ARNS.split(",")
       : undefined,
     spdaRoleArn: process.env.SPDA_ROLE_ARN,
+    spdaStagingBucket: process.env.SPDA_STAGING_BUCKET,
   });
 }
 

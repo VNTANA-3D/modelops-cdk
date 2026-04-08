@@ -1,0 +1,337 @@
+specificationVersion: 'jobtemplate-2023-09'
+name: 'ModelOps ECS Bridge'
+
+parameterDefinitions:
+  # --- SDMA integration (populated by SDMA connector) ---
+  - name: PipelineJsonS3Key
+    type: STRING
+    description: S3 key in the staging bucket pointing to the pipeline JSON file
+  - name: AssetId
+    type: STRING
+    description: SDMA asset ID
+  - name: ConnectorId
+    type: STRING
+    description: SDMA connector ID
+  - name: ProjectId
+    type: STRING
+    description: SDMA project ID
+  - name: InputObjectKey
+    type: STRING
+    description: SDMA input object key
+  - name: OriginalFilePath
+    type: STRING
+    description: Original file path in SDMA
+
+  # --- Job I/O (Deadline manages file transfer to/from SDMA) ---
+  - name: InputFile
+    type: PATH
+    objectType: FILE
+    dataFlow: IN
+    default: files/scene.gltf
+    description: Input file delivered by Deadline from SDMA
+
+  - name: WorkspacePath
+    type: PATH
+    objectType: DIRECTORY
+    dataFlow: OUT
+    default: workspace
+    description: Output directory — Deadline returns these files to SDMA as derived files
+
+  # --- S3 staging ---
+  - name: StagingBucket
+    type: STRING
+    default: ""
+    description: S3 bucket for staging inputs/outputs between the worker and the ECS container
+
+  - name: StagingPrefix
+    type: STRING
+    default: "deadline"
+    description: Key prefix within the staging bucket
+
+  # --- ECS infrastructure (defaults baked from CDK outputs) ---
+  - name: ClusterArn
+    type: STRING
+    default: ""
+    description: ECS cluster ARN
+  - name: TaskDefArn
+    type: STRING
+    default: ""
+    description: ECS task definition ARN
+  - name: Subnets
+    type: STRING
+    default: ""
+    description: Comma-separated subnet IDs
+  - name: SecurityGroups
+    type: STRING
+    default: ""
+    description: Comma-separated security group IDs
+  - name: ContainerName
+    type: STRING
+    default: "modelops-handler"
+    description: Name of the container in the task definition to override
+  - name: HandlerPath
+    type: STRING
+    default: "/home/app/apps/handler/dist/index.js"
+    description: Path to the handler executable inside the container
+  - name: Region
+    type: STRING
+    default: "us-east-1"
+    description: AWS region for ECS operations
+  - name: LogGroup
+    type: STRING
+    default: "/deadline-ecs-bridge/tasks"
+    description: CloudWatch log group for container logs
+  - name: TaskTimeoutSeconds
+    type: STRING
+    default: "3600"
+    description: Maximum seconds to wait for the ECS task before timing out
+
+steps:
+  - name: RunEcsBridge
+    script:
+      actions:
+        onRun:
+          command: bash
+          args:
+            - "{{Task.File.runBridge}}"
+      embeddedFiles:
+        - name: runBridge
+          type: TEXT
+          runnable: true
+          data: |
+            #!/bin/bash
+            set -euo pipefail
+
+            # ===============================================================
+            # Configuration — all values come from job parameters.
+            # ===============================================================
+            CLUSTER_ARN="{{Param.ClusterArn}}"
+            TASK_DEF_ARN="{{Param.TaskDefArn}}"
+            SUBNETS="{{Param.Subnets}}"
+            SECURITY_GROUPS="{{Param.SecurityGroups}}"
+            CONTAINER_NAME="{{Param.ContainerName}}"
+            HANDLER_PATH="{{Param.HandlerPath}}"
+            REGION="{{Param.Region}}"
+            LOG_GROUP="{{Param.LogGroup}}"
+            TASK_TIMEOUT="{{Param.TaskTimeoutSeconds}}"
+
+            STAGING_BUCKET="{{Param.StagingBucket}}"
+            STAGING_PREFIX="{{Param.StagingPrefix}}"
+
+            INPUT_FILE="{{Param.InputFile}}"
+            WORKSPACE_PATH="{{Param.WorkspacePath}}"
+
+            # SDMA context (logged for traceability)
+            ASSET_ID="{{Param.AssetId}}"
+            CONNECTOR_ID="{{Param.ConnectorId}}"
+            PROJECT_ID="{{Param.ProjectId}}"
+            INPUT_OBJECT_KEY="{{Param.InputObjectKey}}"
+            ORIGINAL_FILE_PATH="{{Param.OriginalFilePath}}"
+            # ===============================================================
+
+            JOB_ID="$DEADLINE_JOB_ID"
+            INPUT_DIR=$(dirname "$INPUT_FILE")
+            INPUT_FILENAME=$(basename "$INPUT_FILE")
+            S3_INPUT_PREFIX="$STAGING_PREFIX/$JOB_ID/inputs"
+            S3_OUTPUT_PREFIX="$STAGING_PREFIX/$JOB_ID/outputs"
+
+            # Validate required infrastructure parameters
+            for VAR_NAME in CLUSTER_ARN TASK_DEF_ARN SUBNETS SECURITY_GROUPS STAGING_BUCKET; do
+              eval "VAL=\$$VAR_NAME"
+              if test -z "$VAL"; then
+                echo "[bridge] ERROR: $VAR_NAME is not set. Check connector parameters." >&2
+                exit 1
+              fi
+            done
+
+            # Cleanup staging on exit (success or failure)
+            cleanup() {
+              echo "[bridge] Cleaning up staging prefix: s3://$STAGING_BUCKET/$STAGING_PREFIX/$JOB_ID/"
+              aws s3 rm "s3://$STAGING_BUCKET/$STAGING_PREFIX/$JOB_ID/" --recursive --region "$REGION" --quiet 2>/dev/null || true
+            }
+            trap cleanup EXIT
+
+            echo "=== Deadline ECS Bridge ==="
+            echo "Job ID:         $JOB_ID"
+            echo "Asset ID:       $ASSET_ID"
+            echo "Connector ID:   $CONNECTOR_ID"
+            echo "Project ID:     $PROJECT_ID"
+            echo "Input Key:      $INPUT_OBJECT_KEY"
+            echo "Original Path:  $ORIGINAL_FILE_PATH"
+            echo "InputFile:      $INPUT_FILE"
+            echo "WorkspacePath:  $WORKSPACE_PATH"
+            echo "Staging:        s3://$STAGING_BUCKET/$S3_INPUT_PREFIX/"
+            echo "Cluster:        $CLUSTER_ARN"
+            echo "Task Def:       $TASK_DEF_ARN"
+            echo "Timeout:        ${TASK_TIMEOUT}s"
+
+            echo "[bridge] Contents of input directory:"
+            ls -la "$INPUT_DIR/" 2>/dev/null || echo "  (directory not accessible)"
+            echo ""
+
+            # --- 1. Stage inputs to S3 ---
+            # Deadline job attachments use content-addressable storage — files
+            # are stored by hash, not by name. We re-stage them under
+            # human-readable paths so the container can work with them.
+            echo "[bridge] Uploading input directory to S3..."
+            aws s3 cp "$INPUT_DIR/" "s3://$STAGING_BUCKET/$S3_INPUT_PREFIX/" --recursive --region "$REGION"
+
+            # --- 2. Enrich pipeline JSON with staging context ---
+            # Download pipeline JSON from S3. Pipeline JSON is stored in S3
+            # rather than passed as a parameter because it contains double-brace
+            # template variables that OpenJD would parse as expressions,
+            # and Deadline STRING parameters have a 1024 char limit.
+            PIPELINE_S3_KEY="{{Param.PipelineJsonS3Key}}"
+            echo "[bridge] Downloading pipeline from s3://$STAGING_BUCKET/$PIPELINE_S3_KEY"
+            aws s3 cp "s3://$STAGING_BUCKET/$PIPELINE_S3_KEY" /tmp/raw_pipeline.json --region "$REGION"
+            RAW_PIPELINE=$(cat /tmp/raw_pipeline.json)
+
+            ENRICHED_PIPELINE=$(python3 - "$RAW_PIPELINE" "$STAGING_BUCKET" "$S3_INPUT_PREFIX" "$S3_OUTPUT_PREFIX" "$INPUT_FILENAME" << 'ENRICH_SCRIPT_END'
+            import json, sys
+
+            raw_json, bucket, input_prefix, output_prefix, filename = sys.argv[1:6]
+            pipeline = json.loads(raw_json)
+
+            if "state" not in pipeline:
+                pipeline["state"] = {}
+
+            pipeline["state"]["stagingBucket"] = bucket
+            pipeline["state"]["stagingInputPrefix"] = input_prefix
+            pipeline["state"]["stagingOutputPrefix"] = output_prefix
+            pipeline["state"]["inputFilename"] = filename
+
+            print(json.dumps(pipeline, separators=(",", ":")))
+            ENRICH_SCRIPT_END
+            )
+
+            echo "[bridge] Pipeline enriched with staging context"
+            echo "[bridge] Pipeline JSON: $(echo -n "$ENRICHED_PIPELINE" | wc -c | tr -d ' ') chars"
+
+            # --- 3. Base64-encode pipeline JSON and build ECS overrides ---
+            B64_PIPELINE=$(echo -n "$ENRICHED_PIPELINE" | base64 | tr -d '\n')
+
+            # Use Python to generate JSON because literal curly braces in the
+            # embedded script conflict with OpenJD parameter substitution.
+            RESULT=$(python3 - "$CONTAINER_NAME" "$B64_PIPELINE" "$SUBNETS" "$SECURITY_GROUPS" "$HANDLER_PATH" << 'PYTHON_SCRIPT_END'
+            import json, sys
+            container_name, b64_pipeline, subnets, security_groups, handler_path = sys.argv[1:6]
+            command = "echo " + b64_pipeline + " | base64 -d | " + handler_path + " -i json --logger stdout"
+            overrides = dict(containerOverrides=[
+                dict(name=container_name, command=["/bin/bash", "-c", command])
+            ])
+            network_config = dict(awsvpcConfiguration=dict(
+                subnets=subnets.split(","),
+                securityGroups=security_groups.split(","),
+                assignPublicIp="DISABLED",
+            ))
+            print(json.dumps(overrides, separators=(",", ":")))
+            print(json.dumps(network_config, separators=(",", ":")))
+            PYTHON_SCRIPT_END
+            )
+            OVERRIDES=$(echo "$RESULT" | head -1)
+            NETWORK_CONFIG=$(echo "$RESULT" | tail -1)
+
+            # --- 4. Launch ECS task (with retry) ---
+            MAX_RETRIES=3
+            RETRY_DELAY=5
+            TASK_ARN=""
+
+            for ATTEMPT in $(seq 1 $MAX_RETRIES); do
+              echo "[bridge] Launching ECS task (attempt $ATTEMPT/$MAX_RETRIES)..."
+              RUN_RESULT=$(aws ecs run-task \
+                --cluster "$CLUSTER_ARN" \
+                --task-definition "$TASK_DEF_ARN" \
+                --launch-type FARGATE \
+                --network-configuration "$NETWORK_CONFIG" \
+                --overrides "$OVERRIDES" \
+                --region "$REGION" \
+                --output json 2>&1) || true
+
+              TASK_ARN=$(echo "$RUN_RESULT" | jq -r '.tasks[0].taskArn // empty' 2>/dev/null)
+
+              if test -n "$TASK_ARN"; then
+                break
+              fi
+
+              FAILURE_REASON=$(echo "$RUN_RESULT" | jq -r '.failures[0].reason // empty' 2>/dev/null)
+              echo "[bridge] RunTask failed: $FAILURE_REASON"
+
+              if test "$ATTEMPT" -lt "$MAX_RETRIES"; then
+                echo "[bridge] Retrying in ${RETRY_DELAY}s..."
+                sleep "$RETRY_DELAY"
+                RETRY_DELAY=$((RETRY_DELAY * 2))
+              fi
+            done
+
+            if test -z "$TASK_ARN"; then
+              echo "[bridge] ERROR: RunTask failed after $MAX_RETRIES attempts"
+              echo "$RUN_RESULT"
+              exit 1
+            fi
+
+            TASK_ID="${TASK_ARN##*/}"
+            echo "[bridge] Task launched: $TASK_ARN"
+
+            # --- 5. Wait for task to stop (with timeout) ---
+            echo "[bridge] Waiting for task completion (timeout: ${TASK_TIMEOUT}s)..."
+            SECONDS=0
+
+            while true; do
+              if test "$SECONDS" -ge "$TASK_TIMEOUT"; then
+                echo "[bridge] ERROR: Task timed out after ${TASK_TIMEOUT}s"
+                echo "[bridge] Attempting to stop task..."
+                aws ecs stop-task --cluster "$CLUSTER_ARN" --task "$TASK_ARN" \
+                  --reason "Deadline bridge timeout" --region "$REGION" --output json > /dev/null 2>&1 || true
+                exit 1
+              fi
+
+              DESCRIBE_RESULT=$(aws ecs describe-tasks \
+                --cluster "$CLUSTER_ARN" \
+                --tasks "$TASK_ARN" \
+                --region "$REGION" \
+                --output json)
+
+              STATUS=$(echo "$DESCRIBE_RESULT" | jq -r '.tasks[0].lastStatus')
+
+              if test "$STATUS" = "STOPPED"; then
+                break
+              fi
+
+              echo "[bridge] Task status: $STATUS (${SECONDS}s elapsed) -- waiting 15s..."
+              sleep 15
+            done
+
+            EXIT_CODE=$(echo "$DESCRIBE_RESULT" | jq -r '.tasks[0].containers[0].exitCode // "null"')
+            STOPPED_REASON=$(echo "$DESCRIBE_RESULT" | jq -r '.tasks[0].stoppedReason // "none"')
+            LOG_STREAM="bridge/$CONTAINER_NAME/$TASK_ID"
+
+            echo "[bridge] Task stopped in ${SECONDS}s."
+            echo "  Exit code:        $EXIT_CODE"
+            echo "  Stopped reason:   $STOPPED_REASON"
+            echo "  Log group:        $LOG_GROUP"
+            echo "  Log stream:       $LOG_STREAM"
+
+            # --- 6. Check exit code ---
+            if test "$EXIT_CODE" != "0"; then
+              echo "[bridge] ERROR: ECS task failed with exit code $EXIT_CODE"
+              echo "[bridge] View logs: aws logs get-log-events --log-group-name $LOG_GROUP --log-stream-name $LOG_STREAM --region $REGION"
+              exit 1
+            fi
+
+            # --- 7. Download outputs ---
+            # The container's pipeline uploads processed files to the output
+            # prefix in the staging bucket. We download them to WorkspacePath
+            # so Deadline can return them to SDMA as derived files.
+            echo "[bridge] Downloading outputs to $WORKSPACE_PATH..."
+            mkdir -p "$WORKSPACE_PATH"
+            aws s3 cp "s3://$STAGING_BUCKET/$S3_OUTPUT_PREFIX/" "$WORKSPACE_PATH/" --recursive --region "$REGION"
+
+            OUTPUT_COUNT=$(find "$WORKSPACE_PATH" -type f | wc -l | tr -d ' ')
+            echo "[bridge] Downloaded $OUTPUT_COUNT output file(s)"
+
+            if test "$OUTPUT_COUNT" -eq 0; then
+              echo "[bridge] WARNING: No outputs produced. Task ARN: $TASK_ARN"
+              exit 1
+            fi
+
+            echo "=== Bridge complete (${SECONDS}s total) ==="
