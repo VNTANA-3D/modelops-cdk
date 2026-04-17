@@ -104,7 +104,7 @@ See `README.md` and `example.env` for the full reference.
 
 Drill-down docs under `.claude/context/`:
 
-- [`spda-shared-fleet.md`](.claude/context/spda-shared-fleet.md) — Why SPDA reuses the shared fleet and how to maintain the host config script
+- [`spda-shared-fleet.md`](.claude/context/spda-shared-fleet.md) — Why SPDA reuses the shared fleet
 - [`spda-ecs-bridge.md`](.claude/context/spda-ecs-bridge.md) — Deadline-to-ECS bridge architecture, staging layout, SDMA integration gotchas
 - [`cli-job-tracking.md`](.claude/context/cli-job-tracking.md) — CLI ECS tracking commands, status mapping, internals
 - [`aws_deadline_eks-cluster.md`](.claude/context/aws_deadline_eks-cluster.md) — EKS cluster upgrade guide

@@ -136,12 +136,9 @@ export class ModelopsSpdaStack extends cdk.Stack {
   }
 
   /**
-   * Returns the existing SPDA fleet ID from config.
-   *
-   * WORKAROUND: The SPDA fleet (spatial-data-management-main-fleet) is managed
-   * by SPDA, not by this stack. We reference it by ID and update its host
-   * configuration script separately via the AWS CLI. See
-   * scripts/update-spda-fleet-host-config.sh for details.
+   * Returns the existing SPDA fleet ID from config. The fleet is managed by
+   * SPDA and referenced by ID; workers run only the ECS bridge script, so no
+   * host-level Docker/ECR setup is required on the fleet.
    */
   private getFleetId(): string {
     return this.#config.deadlineFleetId!;
