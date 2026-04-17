@@ -500,7 +500,7 @@ spec:
       serviceAccountName: modelops-job-sa
       containers:
         - name: handler
-          image: 709825985650.dkr.ecr.us-east-1.amazonaws.com/vntana/vntana-v98543:20250926.1
+          image: 709825985650.dkr.ecr.us-east-1.amazonaws.com/vntana/vntana-v98543:20260417.1
           command:
             - /bin/bash
             - -c

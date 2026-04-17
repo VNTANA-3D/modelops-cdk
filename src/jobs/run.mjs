@@ -73,7 +73,7 @@ program
   .addOption(
     new Option("--tag <TAG>", "ECR image tag.")
       .env("UNSAFE_ECR_IMAGE_TAG")
-      .default("20260324.1"),
+      .default("20260417.1"),
   )
   .addOption(
     new Option("--job-cpu <CPU>", "Number of vCPUs for the job.")
