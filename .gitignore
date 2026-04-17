@@ -12,7 +12,8 @@ cdk.out
 .env.*
 .envrc
 .local
-.claude/settings.local.json
-.claude/shaping/*
+.claude/*
+!.claude/context
+!.claude/context/**
 graeme/*
 .DS_Store

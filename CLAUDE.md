@@ -102,6 +102,10 @@ See `README.md` and `example.env` for the full reference.
 
 ## Context Index
 
+Only `.claude/context/` is tracked in git — other `.claude/` subfolders
+(`plans/`, `shaping/`, local settings) are ignored. Put shareable drill-down
+notes in `context/`; keep ephemeral planning elsewhere.
+
 Drill-down docs under `.claude/context/`:
 
 - [`spda-shared-fleet.md`](.claude/context/spda-shared-fleet.md) — Why SPDA reuses the shared fleet
