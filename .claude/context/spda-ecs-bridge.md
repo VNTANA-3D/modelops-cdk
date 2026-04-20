@@ -147,7 +147,70 @@ list.
 
 SDMA does not expose a UI to create DeadlineCloud connectors — write the item
 directly to `SpatialDataManagement-ConnectorsTable` via `aws dynamodb put-item`.
-Use `scripts/generate-spda-connector.sh` to produce the JSON skeleton.
+Use `./index.mjs -c .env.spda connectors generate <profile>` to produce the
+JSON (see Connector Profiles below).
+
+## Connector Profiles
+
+A connector profile is a closed record in `src/connectors/profiles.mjs` that
+describes one SDMA connector shape: which pipeline to run, which input file
+extensions trigger it, which output extensions it produces, and the connector
+name. Adding a new connector is a data addition, not a code branch.
+
+Profiles exist because SDMA's `fileExtensionFilter` rejects comma-joined
+strings (see SDMA Integration Note 2 above). Each profile stores extensions
+as an array and the Node CLI emits one trigger per extension, making the
+comma-joined regression structurally unrepresentable.
+
+### The `cad` profile
+
+| Field | Value |
+|-------|-------|
+| Pipeline | `stl_cad_to_glb` |
+| Inputs | `.stl`, `.stp` |
+| Outputs | `.glb`, `.usdz`, `.fbx`, `.zip`, `.png`, `.html` |
+
+### The `cad_zip` profile
+
+| Field | Value |
+|-------|-------|
+| Pipeline | `zip_cad_to_glb` |
+| Inputs | `.zip` |
+| Outputs | `.glb`, `.usdz`, `.fbx`, `.zip`, `.png`, `.html` |
+
+Targets `.zip`-packaged CAD assemblies. Optimizer settings: `tris: 75000`, `tex_opt_compression: 80`, `draco_encode: true`, `bake_small_features: false`. The Thumbnail task uses `viewerConfig.environmentSrc` pointing at `Studio_A_dim.hdr` instead of a transparent background.
+
+### CLI
+
+```bash
+./index.mjs -c .env.spda connectors stage    cad   # upload pipeline JSON to staging bucket
+./index.mjs -c .env.spda connectors generate cad   # write DynamoDB item JSON to stdout
+./index.mjs -c .env.spda connectors deploy   cad   # stage then generate
+```
+
+See the Connectors section of `README.md` for the full command reference.
+
+## Public Asset Hosting
+
+The local `assets/` directory is uploaded to `s3://<SPDA_STAGING_BUCKET>/assets/` by running:
+
+```bash
+./index.mjs -c .env.spda connectors assets-sync
+```
+
+Every file under the local `assets/` tree lands at the matching key under the bucket's `assets/` prefix — the relative path is preserved. For example, `assets/env_maps/Studio_A_dim.hdr` becomes `s3://<bucket>/assets/env_maps/Studio_A_dim.hdr`.
+
+Public GET access is granted by a bucket-policy statement with Sid `ModelopsPublicAssets`. The statement allows `s3:GetObject` on `arn:aws:s3:::<bucket>/assets/*` for `Principal: "*"`. The CLI merges this statement idempotently — if a statement with that Sid already exists, it is replaced in-place rather than appended, so re-running `assets-sync` never duplicates the entry.
+
+Asset URLs use path-style addressing:
+
+```
+https://s3.<region>.amazonaws.com/<bucket>/assets/<key>
+```
+
+The staging bucket name (`development.modelops.vntana.com`) contains dots — virtual-hosted-style SSL would require a CN of `development.modelops.vntana.com.s3.amazonaws.com`, which no CA issues. The `cad_zip` pipeline's `viewerConfig.environmentSrc` references one of these URLs for `Studio_A_dim.hdr` — the region is hardcoded to `us-east-1` in `pipelines/zip_cad_to_glb.yaml`, so the URL must be edited if the staging bucket ever moves regions.
+
+**`BlockPublicPolicy` escape hatch:** S3 rejects `PutBucketPolicy` with `AccessDenied` if `BlockPublicPolicy: true` is set. An operator must disable it once, out-of-band (via the S3 console or `aws s3api put-public-access-block`), before the first `assets-sync` succeeds. The CLI surfaces a clear error if this is forgotten.
 
 ## Required VPC Endpoints
 
