@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 #
+# DEPRECATED: prefer the Node CLI, which encodes per-extension triggers
+# structurally and always populates PipelineJsonS3Key:
+#
+#   ./index.mjs -c .env.spda connectors generate <profile>
+#   ./index.mjs -c .env.spda connectors stage <profile>
+#   ./index.mjs -c .env.spda connectors deploy <profile>
+#
+# This script emits a single comma-joined fileExtensionFilter that SDMA
+# rejects silently, and it omits PipelineJsonS3Key. It is kept only as a
+# reference for the connector item shape; do not use it for new work.
+# See README.md#connectors for the replacement workflow.
+#
 # Generate a connector.json for SDMA (Spatial Data Management on AWS).
 #
 # This tells SDMA how to wire events (upload, onDemand) to Deadline jobs
