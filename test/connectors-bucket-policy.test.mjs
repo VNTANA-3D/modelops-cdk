@@ -53,7 +53,7 @@ describe("publicAssetsStatement", () => {
     const stmt = publicAssetsStatement("foo");
     expect(stmt.Sid).toBe("ModelopsPublicAssets");
     expect(stmt.Effect).toBe("Allow");
-    expect(stmt.Principal).toEqual({ AWS: "*" });
+    expect(stmt.Principal).toBe("*");
     expect(stmt.Action).toBe("s3:GetObject");
     expect(stmt.Resource).toBe("arn:aws:s3:::foo/assets/*");
   });
