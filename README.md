@@ -483,6 +483,47 @@ All job commands (`list`, `describe`, `logs`) support the same `--backend` and `
   --deadline-queue-id "queue-def456"
 ```
 
+## Connectors
+
+The `connectors` command builds SDMA ConnectorsTable items for use with the SPDA backend. Each connector maps a file extension to a ModelOps pipeline, with a single `fileExtensionFilter` per item (one trigger per extension) and `PipelineJsonS3Key` always populated.
+
+```bash
+./index.mjs -c .env.spda connectors generate <profile>   # prints DynamoDB item to stdout
+./index.mjs -c .env.spda connectors stage <profile>      # uploads pipeline JSON to S3
+./index.mjs -c .env.spda connectors deploy <profile>     # stage + generate (full workflow)
+./index.mjs -c .env.spda connectors assets-sync          # upload ./assets/ to s3://<bucket>/assets/* and grant public read via bucket policy
+```
+
+### Available Profiles
+
+| Profile | Input extensions | Outputs | Pipeline |
+|---------|-----------------|---------|----------|
+| `cad`     | `.stl`, `.stp` | GLB, USDZ, FBX, OBJ (zip), PNG thumbnail, HTML viewer | `pipelines/stl_cad_to_glb.yaml`     |
+| `cad_zip` | `.zip`         | GLB, USDZ, FBX, OBJ (zip), PNG thumbnail, HTML viewer | `pipelines/zip_cad_to_glb.yaml`     |
+
+The `cad` profile accepts `.stl` and `.stp` CAD files and produces a full set of web-ready delivery formats. Two DynamoDB items are generated — one per input extension — because SDMA enforces a single-extension rule on `fileExtensionFilter`.
+
+The `cad_zip` profile targets `.zip`-packaged industrial CAD assemblies, producing the same six delivery formats via a tuned optimizer and an HDR-lit thumbnail. Because `.zip` is a single extension, only one DynamoDB item is generated.
+
+### Required Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `STACK_NAME` | Stack name used to derive the Deadline queue. |
+| `AWS_REGION` | AWS region where resources live. |
+| `DEADLINE_FARM_ID` | SPDA Deadline Cloud farm ID. |
+| `SPDA_STAGING_BUCKET` | S3 bucket where pipeline JSON is staged. |
+| `SDMA_LIBRARY_ID` | SDMA library identifier the connector registers itself under. |
+| `SDMA_TEMPLATE_BUCKET` | S3 bucket that hosts the Deadline job-bundle templates. |
+
+### Pipeline Files
+
+Pipeline definitions live at `pipelines/<profile.pipeline>.yaml`. See [`pipelines/README.md`](pipelines/README.md) for the pipeline format and the state variables the SPDA bridge injects at runtime.
+
+### Deprecation Note
+
+`scripts/generate-spda-connector.sh` is deprecated in favor of this CLI. The CLI corrects two issues present in the old script: triggers are now always single-extension (one DynamoDB item per extension), and `PipelineJsonS3Key` is always populated.
+
 ## Run a Job on EKS with kubectl
 
 You can also submit jobs directly using `kubectl`. Here's an example Kubernetes Job manifest:
