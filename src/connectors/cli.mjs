@@ -24,8 +24,8 @@ const REQUIRED_ENV = [
   "SDMA_TEMPLATE_BUCKET",
 ];
 
-function requireEnv() {
-  const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
+function requireEnv(keys = REQUIRED_ENV) {
+  const missing = keys.filter((k) => !process.env[k]);
   if (missing.length > 0) {
     console.error(`error: missing required env var(s): ${missing.join(", ")}`);
     process.exit(1);
@@ -102,7 +102,7 @@ export const assetsSync = new Command();
 assetsSync
   .description("Upload repo assets to the staging bucket and grant public read on /assets/*")
   .action(async () => {
-    requireEnv();
+    requireEnv(["AWS_REGION", "SPDA_STAGING_BUCKET"]);
     const assetsDir = resolve(REPO_ROOT, ASSETS_DIR_REL);
     const urls = await syncAssets({
       bucket: process.env.SPDA_STAGING_BUCKET,

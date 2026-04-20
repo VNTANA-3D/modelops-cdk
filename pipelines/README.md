@@ -63,3 +63,14 @@ filename matches the input filename, SDMA treats the result as the same
 content and hides it from the default file view. Prefix output filenames
 (`optimized_<inputFilename>`) to keep the derivation visible as a distinct
 derived file.
+
+## Available Pipelines
+
+| File | Description |
+|---|---|
+| `stl_cad_to_glb.yaml` | CAD profile reference pipeline. Accepts `.stl` or `.stp` input and emits GLB, USDZ, FBX, OBJ (zip), PNG, and an HTML viewer. Relies on the bridge-injected state variables described above. |
+| `zip_cad_to_glb.yaml` | Industrial-CAD variant. Accepts a `.zip` archive containing CAD files and emits the same six outputs (GLB, USDZ, FBX, OBJ zip, PNG, HTML viewer) with a tuned optimizer and HDR-lit thumbnail. Relies on the bridge-injected state variables described above. |
+
+See [`../README.md#connectors`](../README.md#connectors) for how to stage
+the input file and generate the connector item before submitting this
+pipeline.
