@@ -128,9 +128,28 @@ SDMA has no API to create new asset templates, so the clone flow is:
 
 1. `get-item` the closest existing template.
 2. `jq`-rewrite `AssetTemplateId`, `AssetTemplateName`, timestamps,
-   bump `Version` to `1`, reset `permittedConnectorIds` to `[]`.
+   bump `Version` to `1`, reset `permittedConnectorIds` to `[]`, **and
+   replace `assetNameRegex`** so the new template accepts the intended
+   input extensions (clones inherit the source template's regex). Also
+   review `fileTypes`, `fileMetadataConfig`, and `assetMetadataConfig`
+   if the new template should accept different uploads.
 3. `put-item` the new template.
 4. `update-item` to append the connector id as above.
+
+`assetNameRegex` is a plain `S` attribute under
+`AssetTemplateConfig.assetNameRegex`. Example — relax the STL-inherited
+regex to accept `.zip`:
+
+```bash
+aws dynamodb update-item \
+  --table-name SpatialDataManagement-AssetTemplatesTable \
+  --key "{\"AssetTemplateId\":{\"S\":\"$TEMPLATE_ID\"}}" \
+  --update-expression "SET AssetTemplateConfig.assetNameRegex = :r, UpdatedAt = :t" \
+  --expression-attribute-values "$(jq -n --arg r '.*\.(zip|ZIP|Zip)$' --arg t "$(date +%s)" '{":r":{"S":$r},":t":{"N":$t}}')"
+```
+
+Skipping this step produces a UI error at upload time:
+`"Asset name does not match the template requirements: <inherited regex>"`.
 
 See the `.local/plans/2026-04-20-zip-cad-connector-implementation-qa.md`
 Scenario 5 for a runnable recipe that inline-generates a new
