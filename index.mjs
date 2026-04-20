@@ -3,6 +3,7 @@
 import { program, Option } from "commander";
 import * as dotenv from "dotenv";
 
+import connectors from "./src/connectors/index.mjs";
 import platform from "./src/platform/index.mjs";
 import jobs from "./src/jobs/index.mjs";
 import { program as deploy } from "./src/deploy.mjs";
@@ -22,6 +23,7 @@ program
   .hook("preSubcommand", (thisCommand) => {
     dotenv.config({ path: thisCommand.opts().config, override: true });
   })
+  .addCommand(connectors.name("connectors"))
   .addCommand(deploy.name("deploy"))
   .addCommand(destroy.name("destroy"))
   .addCommand(jobs.name("jobs"))

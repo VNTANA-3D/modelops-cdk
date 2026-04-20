@@ -6,7 +6,7 @@ import { Command } from "commander";
 
 import { getProfile } from "./profiles.mjs";
 import { fetchStackOutputs } from "./cloudformation.mjs";
-import { buildConnector } from "./build.mjs";
+import { buildConnector, marshallConnectorItem } from "./build.mjs";
 import { yamlToPipelineJson, pipelineS3Key } from "./stage.mjs";
 import { uploadPipelineJson } from "./s3.mjs";
 import { syncAssets } from "./s3-assets.mjs";
@@ -62,7 +62,7 @@ generate
       connectorId: opts.connectorId ?? `connector-${randomUUID().replace(/-/g, "")}`,
       now: new Date(),
     });
-    process.stdout.write(JSON.stringify(item, null, 2) + "\n");
+    process.stdout.write(JSON.stringify(marshallConnectorItem(item), null, 2) + "\n");
   });
 
 export const stage = new Command();
