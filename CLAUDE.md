@@ -112,6 +112,7 @@ Drill-down docs under `.claude/context/`:
 - [`spda-shared-fleet.md`](.claude/context/spda-shared-fleet.md) — Why SPDA reuses the shared fleet
 - [`spda-ecs-bridge.md`](.claude/context/spda-ecs-bridge.md) — Deadline-to-ECS bridge architecture, staging layout, SDMA integration gotchas
 - [`spda-connectors.md`](.claude/context/spda-connectors.md) — SPDA connectors CLI: module layout, AttributeValue marshalling, asset-template routing
+- [`docs/install/quickstart.md`](docs/install/quickstart.md) / [`docs/install/reference.md`](docs/install/reference.md) — Customer-facing SDMA connector install docs; doubles as the `cad_zip` smoke test.
 - [`cli-job-tracking.md`](.claude/context/cli-job-tracking.md) — CLI ECS tracking commands, status mapping, internals
 - [`aws_deadline_eks-cluster.md`](.claude/context/aws_deadline_eks-cluster.md) — EKS cluster upgrade guide
 - `aws_deadline_*.md` — Snapshot of AWS Deadline Cloud documentation (concepts, fleet/queue/farm setup, pipeline integration, submitter, monitor onboarding)
