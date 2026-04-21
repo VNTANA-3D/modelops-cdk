@@ -6,6 +6,15 @@ CDK Project to deploy VNTANA ModelOps in AWS.
 
 This project showcases how to install the VNTANA ModelOps Handler in your own AWS infrastructure to process your 3D assets. It includes a fully automated method for deploying infrastructure to run optimization jobs using either **AWS Batch/Fargate** or **Amazon EKS** (Elastic Kubernetes Service). Additionally, it provides numerous settings to customize the deployment to your needs.
 
+## Installing VNTANA connectors into SDMA
+
+Operators running an existing SDMA deployment who want to register a VNTANA
+connector (for example, the `cad_zip` connector that converts `.zip` CAD
+uploads to `.glb`) follow the install guides under `docs/install/`.
+
+- [Install Quickstart](./docs/install/quickstart.md) — linear walkthrough from a cloned repo to a working `cad_zip` connector processing a real upload.
+- [Install Reference](./docs/install/reference.md) — reference for operators extending beyond the default `cad_zip` connector (environment variables, stack outputs, profile anatomy, asset-template wiring, troubleshooting).
+
 ## Compute Backends
 
 The project supports three compute backend configurations:
