@@ -1,5 +1,9 @@
 # SPDA Connectors CLI
 
+> **Customer install docs:** for the step-by-step external-customer install
+> flow, see [`docs/install/quickstart.md`](../../docs/install/quickstart.md).
+> This doc stays focused on maintainer internals.
+
 The `connectors` subcommand group builds and installs SDMA
 `ConnectorsTable` items for the SPDA backend. This doc complements
 [`spda-ecs-bridge.md`](spda-ecs-bridge.md): the bridge is the *runtime*,
