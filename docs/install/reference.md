@@ -25,7 +25,7 @@ CDK-time variables enforced by `lib/config.ts` in the `superRefine` block at lin
 | `DEADLINE_FARM_ID` | SDMA CloudFormation stack output (e.g. `DeadlineFarmId`) | ID of the existing SPDA-managed Deadline Cloud farm. `lib/config.ts:221` rejects its absence when `COMPUTE_BACKEND=spda`. | `cdk deploy`, `connectors generate`, `connectors deploy` |
 | `DEADLINE_FLEET_ID` | SDMA CloudFormation stack output (e.g. `DeadlineFleetId`) | ID of the existing SPDA-managed Deadline Cloud fleet. `lib/config.ts:228` rejects its absence when `COMPUTE_BACKEND=spda`. | `cdk deploy` |
 | `SPDA_S3_BUCKET_ARNS` | SDMA CloudFormation stack output (e.g. `AssetEncryptedS3BucketArn`) | Comma-separated ARN(s) of the SPDA asset bucket. Used for IAM scoping and queue `jobAttachmentSettings`. `lib/config.ts:235` rejects the absence of at least one entry. | `cdk deploy` |
-| `SPDA_STAGING_BUCKET` | SDMA CloudFormation stack output (e.g. `StagingBucketName`) | S3 bucket name for staging pipeline inputs/outputs and pipeline JSON files. `lib/config.ts:243` rejects its absence. | `cdk deploy`, `connectors stage`, `connectors deploy`, `connectors assets-sync` |
+| `SPDA_STAGING_BUCKET` | SDMA CloudFormation stack output (e.g. `StagingBucketName`) | S3 bucket name for staging pipeline inputs/outputs and pipeline JSON files. `lib/config.ts:242` rejects its absence. | `cdk deploy`, `connectors stage`, `connectors deploy`, `connectors assets-sync` |
 | `SDMA_LIBRARY_ID` | SDMA admin UI → Libraries → select library → copy the ID from the URL or detail pane | Library that owns asset templates and connectors. Embedded directly in the DynamoDB `LibraryId` field of the connector item. | `connectors generate`, `connectors deploy` |
 | `SDMA_TEMPLATE_BUCKET` | SDMA CloudFormation stack output (e.g. `TemplateBucketName`) | S3 bucket where SDMA reads Deadline job template files. The connector item points SDMA here via `deadlineConfig.templateS3Bucket` (`src/connectors/build.mjs:88`). | `connectors generate`, `connectors deploy` |
 | `UNSAFE_ECR_IMAGE` | Default: `709825985650.dkr.ecr.us-east-1.amazonaws.com/vntana/vntana-v98543`. AWS Marketplace subscribers use the URI from their subscription. | VNTANA handler container image repository URI. `lib/config.ts:19` declares the `image` field with this default. | `cdk deploy` |
@@ -80,7 +80,7 @@ downloads at job runtime (`src/connectors/build.mjs:45`).
 ### `inputExtensions`
 
 Type: non-empty array of dot-prefixed lowercase alphanumeric strings, no duplicates
-(`src/connectors/profiles.mjs:21`). Each extension must match `/^\.[a-z0-9]+$/`
+(`src/connectors/profiles.mjs:20`). Each extension must match `/^\.[a-z0-9]+$/`
 (`src/connectors/profiles.mjs:10`).
 
 `buildConnector()` maps over `inputExtensions` at `src/connectors/build.mjs:47` and emits
@@ -92,7 +92,7 @@ individual triggers makes that regression structurally impossible.
 ### `outputExtensions`
 
 Type: non-empty array of dot-prefixed lowercase alphanumeric strings, no duplicates
-(`src/connectors/profiles.mjs:28`).
+(`src/connectors/profiles.mjs:27`).
 
 Each entry becomes a `derivedFiles` filter inside every trigger at
 `src/connectors/build.mjs:53`. SDMA uses these to recognise which output files to ingest
@@ -194,7 +194,7 @@ command, run `connectors stage` and `connectors generate --connector-id <id>` se
 
 SDMA fires a connector only when the uploaded asset's template lists the `ConnectorId`
 in `permittedConnectorIds`, because every profile emits `Default: false`
-(`src/connectors/build.mjs:97`). Two patterns apply depending on whether an existing
+(`src/connectors/build.mjs:96`). Two patterns apply depending on whether an existing
 template already accepts the target input extensions.
 
 **Path expression rule: use logical names only in UpdateExpression paths. The `.M` and `.L`

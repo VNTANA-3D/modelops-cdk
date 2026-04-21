@@ -134,7 +134,7 @@ aws cloudformation describe-stacks \
 
 **Expected:** `.env.spda` exists at the repository root with every required variable filled
 in (either `VPC_ID` or `USE_DEFAULT_VPC`, not both) and no angle-bracket tokens remaining. If a CFN query returns `None` the output key name
-differs in your SDMA version — see "CFN output key not found" in
+differs in your SDMA version — see the Troubleshooting section of
 [`docs/install/reference.md`](reference.md).
 
 ---
@@ -158,7 +158,13 @@ aws cloudformation describe-stacks \
   --output text
 ```
 
-The command must print all eight of these names (order may vary):
+Each output key is prefixed with `${STACK_NAME}`, so for `STACK_NAME=ModelopsHandler` the
+keys look like `ModelopsHandlerEcsClusterArn`, `ModelopsHandlerTaskDefArn`, and so on. The
+CLI matches by suffix (`src/connectors/cloudformation.mjs:94`), so the exact prefix does not
+matter for tooling — but the raw AWS response will always show the full prefixed names.
+
+The eight suffixes that must each appear somewhere in the output list
+(`src/connectors/cloudformation.mjs:29`):
 
 - `ClusterArn`
 - `TaskDefArn`
@@ -169,8 +175,23 @@ The command must print all eight of these names (order may vary):
 - `ProxyRoleArn`
 - `QueueId`
 
-**Expected:** All eight output key names appear in the response. If any are missing the
-deploy did not complete cleanly — see "Stack deploy failed" in
+A `jq` one-liner to confirm all eight suffixes are present (replace `ModelopsHandler` with
+your `STACK_NAME`):
+
+```bash
+aws cloudformation describe-stacks \
+  --stack-name "${STACK_NAME}Spda" \
+  --query 'Stacks[0].Outputs[].OutputKey' \
+  --output json | \
+jq 'map(select(
+  endswith("ClusterArn") or endswith("TaskDefArn") or endswith("Subnets") or
+  endswith("SecurityGroupId") or endswith("EcsLogGroupName") or
+  endswith("StagingBucket") or endswith("ProxyRoleArn") or endswith("QueueId")
+))'
+```
+
+**Expected:** The `jq` filter returns an array of exactly eight entries. If any are missing the
+deploy did not complete cleanly — see the Troubleshooting section of
 [`docs/install/reference.md`](reference.md).
 
 ---
@@ -190,8 +211,8 @@ Copy any URL from stdout and run:
 curl -I <printed-url>
 ```
 
-**Expected:** `curl` returns `HTTP/1.1 200 OK`. If it returns 403 or 404 see "Public
-assets not reachable" in [`docs/install/reference.md`](reference.md).
+**Expected:** `curl` returns `HTTP/1.1 200 OK`. If it returns 403 or 404 see the
+Troubleshooting section of [`docs/install/reference.md`](reference.md).
 
 ---
 
@@ -235,7 +256,7 @@ jq -r '.ConnectorId.S' /tmp/cad_zip.json
 
 **Expected:** A raw string of the form `connector-<32-hex-chars>` printed to stdout (no
 surrounding quotes — `-r` strips them). This is the `ConnectorId` you will use in Phase 5.
-If `put-item` returned an error see "AccessDenied on DynamoDB put-item" in
+If `put-item` returned an error see the Troubleshooting section of
 [`docs/install/reference.md`](reference.md).
 
 ---
@@ -347,8 +368,8 @@ aws dynamodb update-item \
 > **Path expression rule: use logical names only. No `.M`, no `.L`.**
 
 **Expected:** The SDMA admin UI shows the `cad_zip` connector listed under Permitted
-Connectors for the target template. If the UI does not reflect the change see "Template
-update not visible in SDMA UI" in [`docs/install/reference.md`](reference.md).
+Connectors for the target template. If the UI does not reflect the change or no job fires
+after upload, see "No job runs after upload." in [`docs/install/reference.md`](reference.md).
 
 ---
 
