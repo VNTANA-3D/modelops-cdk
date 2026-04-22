@@ -40,7 +40,7 @@ The top-level `-c/--config` flag (also `MODELOPS_CONFIG` env var) loads a dotenv
 ./index.mjs jobs describe <job_id>             # Formatted summary
 ./index.mjs jobs describe <job_id> --json      # Raw JSON
 ./index.mjs jobs logs <job_id>                 # View logs (interleaved [brg]/[ecs] on deadline/spda)
-./index.mjs jobs watch <job_id>                # Poll until completion, then print logs
+./index.mjs jobs watch <job_id>                # Stream logs live until completion, then print status
 ```
 
 For deadline/spda backends, these commands enrich output with ECS task details and merge bridge + container logs. See [`.claude/context/cli-job-tracking.md`](.claude/context/cli-job-tracking.md) for the full command surface, status mapping, and internals.
