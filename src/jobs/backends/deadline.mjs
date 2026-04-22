@@ -389,21 +389,9 @@ export class DeadlineBackend extends JobBackend {
    * @returns {Promise<string|void>} Log output (or streams to stdout if following)
    */
   async getLogs(jobId, options = {}) {
-    // Collect log group/stream info from session actions
-    const logReferences = await this.#collectLogReferences(jobId);
-
-    if (!logReferences.length) {
-      // Fall back to using session-level log info if available
-      const sessions = await this.#getJobSessions(jobId);
-      for (const session of sessions) {
-        if (session.workerLog) {
-          logReferences.push({
-            logGroupName: session.workerLog.logGroupName,
-            logStreamName: session.workerLog.logStreamName,
-          });
-        }
-      }
-    }
+    const logReferences = await this.#resolveLogReferences(jobId, {
+      waitForStreams: Boolean(options.follow),
+    });
 
     if (!logReferences.length) {
       throw new Error(`No log streams found for job ${jobId}`);
@@ -548,6 +536,35 @@ export class DeadlineBackend extends JobBackend {
    * @param {string} jobId - Deadline Cloud job ID
    * @returns {Promise<Array<{logGroupName: string, logStreamName: string}>>}
    */
+  async #resolveLogReferences(jobId, { waitForStreams }) {
+    const gather = async () => {
+      const refs = await this.#collectLogReferences(jobId);
+      if (refs.length) return refs;
+      const sessions = await this.#getJobSessions(jobId);
+      for (const session of sessions) {
+        if (session.workerLog) {
+          refs.push({
+            logGroupName: session.workerLog.logGroupName,
+            logStreamName: session.workerLog.logStreamName,
+          });
+        }
+      }
+      return refs;
+    };
+
+    let refs = await gather();
+    if (refs.length || !waitForStreams) return refs;
+
+    process.stderr.write("Waiting for log streams...\n");
+    while (!refs.length) {
+      const { status } = await this.describeJob(jobId);
+      if (status !== "RUNNING" && status !== "PENDING") return refs;
+      await new Promise((r) => setTimeout(r, 2000));
+      refs = await gather();
+    }
+    return refs;
+  }
+
   async #collectLogReferences(jobId) {
     const sessions = await this.#getJobSessions(jobId);
     const logReferences = [];

@@ -60,15 +60,15 @@ container logs from CloudWatch, and emits a merged timeline prefixed with
 
 ### `jobs watch <jobId>` and `jobs run --watch`
 
-Poll `describeJob` every five seconds. Only terminal states (`SUCCEEDED`,
-`FAILED`) break the loop. While polling:
+`watch` calls `logs` in follow mode, so the merged `[brg]`/`[ecs]`
+stream prints live. When the follow loop exits (the job reaches a
+terminal state), `watch` prints a final `Job status: <SUCCEEDED|FAILED>`
+line. `run --watch` behaves the same — stream until the session ends.
 
-- If the ECS task is known, show `Job: <status> | ECS: <ecsStatus>`.
-- Otherwise show `Job: <status> | Deadline: <deadlineStatus>`.
-
-After the job reaches a terminal state, `watch` calls `logs` to print the
-merged history; `run --watch` streams logs in follow mode until the session
-ends.
+Follow mode is resilient to freshly-submitted jobs: `getLogs` polls
+`describeJob` every two seconds until log streams appear instead of
+erroring out with "No log streams found for job" on a PENDING job. It
+exits early if the job terminates before any stream shows up.
 
 ## Internals
 

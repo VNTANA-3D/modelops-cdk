@@ -3,7 +3,6 @@ import { Command, Option } from "commander";
 import { getBackend } from "./backends/index.mjs";
 import { describe } from "./describe.mjs";
 import { logs } from "./logs.mjs";
-import { sleep } from "../lib/utils.mjs";
 
 export const program = new Command();
 
@@ -47,30 +46,8 @@ program
 
     const backend = getBackend(computeBackend, backendConfig);
 
-    while (true) {
-      const job = await describe(jobId, backend);
-
-      if (job.status === "SUCCEEDED" || job.status === "FAILED") {
-        process.stderr.write("\r\x1b[K");
-        process.stderr.write(
-          `\nJob status: ${job.status}\n\nGetting logs...\n\n`,
-        );
-        await sleep(2000);
-        break;
-      }
-
-      if (job.ecsTask) {
-        process.stderr.write(
-          `\rJob: ${job.status} | ECS: ${job.ecsTask.status}`,
-        );
-      } else {
-        process.stderr.write(
-          `\rJob: ${job.status} | Deadline: ${job.deadlineStatus || "..."}`,
-        );
-      }
-
-      await sleep(5000);
-    }
-
     await logs(jobId, backend);
+
+    const job = await describe(jobId, backend);
+    process.stderr.write(`\nJob status: ${job.status}\n`);
   });
