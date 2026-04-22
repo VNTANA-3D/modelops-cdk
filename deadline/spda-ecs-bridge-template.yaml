@@ -83,7 +83,7 @@ parameterDefinitions:
     description: CloudWatch log group for container logs
   - name: TaskTimeoutSeconds
     type: STRING
-    default: "3600"
+    default: "7200"
     description: Maximum seconds to wait for the ECS task before timing out
 
 steps:

@@ -66,7 +66,7 @@ export function buildConnector({
         ContainerName: "modelops-handler",
         HandlerPath: "/home/app/apps/handler/dist/index.js",
         LogGroup: stackOutputs.EcsLogGroupName,
-        TaskTimeoutSeconds: "3600",
+        TaskTimeoutSeconds: "7200",
         Region: region,
         StagingBucket: stackOutputs.StagingBucket,
         StagingPrefix: "deadline",
