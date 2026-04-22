@@ -84,8 +84,14 @@ export class ModelopsSpdaStack extends cdk.Stack {
       value: ecs.cluster.clusterArn,
     });
 
+    // Emit the family-level ARN (no `:revision`) so consumers resolve to
+    // LATEST ACTIVE and don't break when CDK deregisters the old revision.
     new cdk.CfnOutput(this, this.#name + "TaskDefArn", {
-      value: ecs.taskDef.taskDefinitionArn,
+      value: cdk.Stack.of(this).formatArn({
+        service: "ecs",
+        resource: "task-definition",
+        resourceName: ecs.taskDef.family,
+      }),
     });
 
     new cdk.CfnOutput(this, this.#name + "Subnets", {
@@ -393,11 +399,17 @@ export class ModelopsSpdaStack extends cdk.Stack {
     queueRole: cdk.aws_iam.Role,
     ecs: EcsInfrastructure,
   ) {
-    // ecs:RunTask scoped to task definition
+    // ecs:RunTask scoped to the task definition family (any revision), so
+    // IAM keeps working after CDK rolls a new revision.
+    const taskDefFamilyArn = cdk.Stack.of(this).formatArn({
+      service: "ecs",
+      resource: "task-definition",
+      resourceName: ecs.taskDef.family,
+    });
     queueRole.addToPolicy(
       new cdk.aws_iam.PolicyStatement({
         actions: ["ecs:RunTask"],
-        resources: [ecs.taskDef.taskDefinitionArn],
+        resources: [`${taskDefFamilyArn}:*`],
       }),
     );
 

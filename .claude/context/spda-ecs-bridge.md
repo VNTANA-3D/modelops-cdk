@@ -64,6 +64,20 @@ The SPDA stack creates:
 | VPC interface endpoints | `logs` and `metering-marketplace` (required when `assignPublicIp=DISABLED`) |
 | CloudWatch Log Group | `/deadline-ecs-bridge/tasks` with one-week retention |
 
+### Task Definition ARN: family-only
+
+The `TaskDefArn` CfnOutput emits the **family-level** ARN
+(`arn:aws:ecs:...:task-definition/<family>`), not a pinned `:revision`.
+ECS resolves a family-only ARN to `LATEST` at `RunTask` time, so the
+connector item keeps working after CDK deregisters the previous revision
+on a stack roll. The `ecs:RunTask` IAM statement mirrors this by scoping
+to `<family-arn>:*` (any revision).
+
+Before this change, CDK's default `taskDefinitionArn` included the
+current revision; a subsequent `cdk deploy` would deregister that
+revision while the DynamoDB connector item still pointed at it, and the
+next job would exit with code 5 before even starting.
+
 ## Bridge Script (deadline/spda-ecs-bridge-template.yaml)
 
 An OpenJD template whose `onRun` action runs a bash script that:
