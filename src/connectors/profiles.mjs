@@ -41,7 +41,7 @@ export const ConnectorProfile = z.object({
 export const CONNECTOR_PROFILES = Object.freeze({
   cad: ConnectorProfile.parse({
     pipeline: "stl_cad_to_glb",
-    inputExtensions: [".stl", ".stp"],
+    inputExtensions: [".stl", ".stp", ".step"],
     outputExtensions: [".glb", ".usdz", ".fbx", ".zip", ".png", ".html"],
     connectorName: "STL/STEP → GLB via ECS",
   }),
