@@ -218,45 +218,39 @@ Troubleshooting section of [`docs/install/reference.md`](reference.md).
 
 ## Phase 4 — Install the `cad_zip` connector
 
-Generate the connector item, stage the pipeline JSON, and write it to the SDMA ConnectorsTable.
+Stage the pipeline JSON and upsert the connector item in one step:
 
 ```bash
-./index.mjs -c .env.spda connectors deploy cad_zip > /tmp/cad_zip.json
-aws dynamodb put-item \
-  --table-name SpatialDataManagement-ConnectorsTable \
-  --item file:///tmp/cad_zip.json
+./index.mjs -c .env.spda connectors deploy cad_zip
 ```
 
-> **Fresh-UUID trap.** Every run of `connectors deploy` without a pre-seeded ID mints a
-> new UUID. Running `put-item` twice with different UUIDs creates two ConnectorsTable rows
-> with identical configuration — both will appear in the SDMA "Derive content" picker.
-> `--connector-id` is a `generate`-only flag; it is not accepted by `deploy`. To re-install
-> without minting a new ID, use `connectors generate` directly with the existing `ConnectorId`
-> and write the result with `put-item`:
-> ```bash
-> ./index.mjs -c .env.spda connectors generate cad_zip --connector-id <existing-id> > /tmp/cad_zip.json
-> aws dynamodb put-item \
->   --table-name SpatialDataManagement-ConnectorsTable \
->   --item file:///tmp/cad_zip.json
-> ```
-> `generate` only builds the DynamoDB item; it does not touch S3. If the pipeline JSON on S3
-> ever needs refreshing, run `connectors stage <profile>` separately. If duplicates already
-> exist, see "Two connectors with the same name" in
-> [`docs/install/reference.md`](reference.md).
+`deploy` scans `SpatialDataManagement-ConnectorsTable` for a row with the profile's
+`ConnectorName` (`ZIP CAD → GLB via ECS` for `cad_zip`). If one exists, it reuses that
+`ConnectorId` and `CreatedAt` so asset-template references stay valid. Otherwise it mints a
+new `connector-<32-hex-chars>` UUID. Re-running is idempotent; use `--connector-id <id>` only
+when you need to pin a specific ID.
 
-> **Table name note.** `SpatialDataManagement-ConnectorsTable` is the default SDMA table
-> name. If your SDMA installation uses a different stack prefix, substitute the actual
-> table name you see in the DynamoDB console.
+> **Table name override.** The table name defaults to
+> `SpatialDataManagement-ConnectorsTable`. Set `SDMA_CONNECTORS_TABLE` in `.env.spda` if your
+> SDMA installation uses a different stack prefix.
 
-Verify the row was written:
+The `ConnectorId` used (either reused or newly minted) is printed to stderr — you will need
+it for Phase 5:
+
+```
+created connector connector-<32-hex-chars> in SpatialDataManagement-ConnectorsTable (ZIP CAD → GLB via ECS)
+```
+
+To re-read the ID later:
 
 ```bash
-jq -r '.ConnectorId.S' /tmp/cad_zip.json
+aws dynamodb scan --table-name SpatialDataManagement-ConnectorsTable \
+  --filter-expression "ConnectorName = :n" \
+  --expression-attribute-values '{":n":{"S":"ZIP CAD → GLB via ECS"}}' \
+  --projection-expression "ConnectorId"
 ```
 
-**Expected:** A raw string of the form `connector-<32-hex-chars>` printed to stdout (no
-surrounding quotes — `-r` strips them). This is the `ConnectorId` you will use in Phase 5.
-If `put-item` returned an error see the Troubleshooting section of
+If `deploy` returned an error see the Troubleshooting section of
 [`docs/install/reference.md`](reference.md).
 
 ---

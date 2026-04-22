@@ -10,6 +10,11 @@ import { buildConnector, marshallConnectorItem } from "./build.mjs";
 import { yamlToPipelineJson, pipelineS3Key } from "./stage.mjs";
 import { uploadPipelineJson } from "./s3.mjs";
 import { syncAssets } from "./s3-assets.mjs";
+import {
+  DEFAULT_CONNECTORS_TABLE,
+  findConnectorByName,
+  putConnectorItem,
+} from "./dynamodb.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
@@ -89,12 +94,65 @@ stage
 export const deploy = new Command();
 
 deploy
-  .description("Stage pipeline JSON to S3, then generate the connector item")
+  .description("Stage pipeline JSON to S3 and upsert the connector item in DynamoDB")
   .argument("<profile>", "Connector profile name (e.g. cad)")
-  .action(async (profileName) => {
+  .option(
+    "--connector-id <id>",
+    "Force a specific ConnectorId (default: reuse existing row by name, else mint)",
+  )
+  .action(async (profileName, opts) => {
     requireEnv();
+    const region = process.env.AWS_REGION;
+    const table = process.env.SDMA_CONNECTORS_TABLE ?? DEFAULT_CONNECTORS_TABLE;
+    const profile = getProfile(profileName);
+
+    // Stage the pipeline YAML → JSON in S3 (same as `connectors stage`).
     await stage.parseAsync([profileName], { from: "user" });
-    await generate.parseAsync([profileName], { from: "user" });
+
+    // Look up an existing row by name so re-runs overwrite in place.
+    const existing = opts.connectorId
+      ? null
+      : await findConnectorByName({ region, table, connectorName: profile.connectorName });
+
+    if (existing?.duplicateIds.length) {
+      process.stderr.write(
+        `warning: ${existing.duplicateIds.length} duplicate row(s) found for "${profile.connectorName}". ` +
+          `Keeping ${existing.connectorId}, orphans: ${existing.duplicateIds.join(", ")}\n`,
+      );
+    }
+
+    const connectorId =
+      opts.connectorId ??
+      existing?.connectorId ??
+      `connector-${randomUUID().replace(/-/g, "")}`;
+
+    const stackOutputs = await fetchStackOutputs({
+      stackName: resolveStackName(),
+      region,
+    });
+
+    const item = buildConnector({
+      profile,
+      stackOutputs,
+      farmId: process.env.DEADLINE_FARM_ID,
+      region,
+      libraryId: process.env.SDMA_LIBRARY_ID,
+      templateBucket: process.env.SDMA_TEMPLATE_BUCKET,
+      connectorId,
+      now: new Date(),
+    });
+
+    // Preserve the original CreatedAt on update so audit timelines stay intact.
+    if (existing?.createdAt !== undefined) {
+      item.CreatedAt = existing.createdAt;
+    }
+
+    await putConnectorItem({ region, table, item: marshallConnectorItem(item) });
+
+    const action = existing ? "updated" : "created";
+    process.stderr.write(
+      `${action} connector ${connectorId} in ${table} (${profile.connectorName})\n`,
+    );
   });
 
 export const assetsSync = new Command();

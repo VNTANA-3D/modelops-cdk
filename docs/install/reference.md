@@ -28,6 +28,7 @@ CDK-time variables enforced by `lib/config.ts` in the `superRefine` block at lin
 | `SPDA_STAGING_BUCKET` | SDMA CloudFormation stack output (e.g. `StagingBucketName`) | S3 bucket name for staging pipeline inputs/outputs and pipeline JSON files. `lib/config.ts:242` rejects its absence. | `cdk deploy`, `connectors stage`, `connectors deploy`, `connectors assets-sync` |
 | `SDMA_LIBRARY_ID` | SDMA admin UI → Libraries → select library → copy the ID from the URL or detail pane | Library that owns asset templates and connectors. Embedded directly in the DynamoDB `LibraryId` field of the connector item. | `connectors generate`, `connectors deploy` |
 | `SDMA_TEMPLATE_BUCKET` | SDMA CloudFormation stack output (e.g. `TemplateBucketName`) | S3 bucket where SDMA reads Deadline job template files. The connector item points SDMA here via `deadlineConfig.templateS3Bucket` (`src/connectors/build.mjs:88`). | `connectors generate`, `connectors deploy` |
+| `SDMA_CONNECTORS_TABLE` | Default: `SpatialDataManagement-ConnectorsTable`. Override if your SDMA stack prefix differs. | DynamoDB table the connector item is upserted into (`src/connectors/dynamodb.mjs`). | `connectors deploy` |
 | `UNSAFE_ECR_IMAGE` | Default: `709825985650.dkr.ecr.us-east-1.amazonaws.com/vntana/vntana-v98543`. AWS Marketplace subscribers use the URI from their subscription. | VNTANA handler container image repository URI. `lib/config.ts:19` declares the `image` field with this default. | `cdk deploy` |
 | `UNSAFE_ECR_IMAGE_TAG` | Default: `20260417.1` (`lib/config.ts:24`). AWS Marketplace subscribers use the tag from their subscription. | Handler image tag. | `cdk deploy` |
 | `SPDA_ROLE_ARN` | ARN of the SDMA Lambda execution role; retrieve from the SDMA CloudFormation stack resources or IAM console | Optional. ARN of the SDMA role that assumes the proxy role for cross-account assume-role configuration (`lib/config.ts:205`). When absent, the proxy role trust policy falls back to the account root principal (`lib/modelops-spda-stack.ts:199`). | `cdk deploy` |
@@ -176,17 +177,21 @@ the following top-level keys:
 `marshallConnectorItem()` at `src/connectors/build.mjs:130` wraps each field recursively
 into DynamoDB AttributeValue form: strings become `{"S": "..."}`, numbers become
 `{"N": "1"}`, booleans become `{"BOOL": true}`, arrays become `{"L": [...]}`, and objects
-become `{"M": {...}}`. The output flows directly into `aws dynamodb put-item --item file://...`.
+become `{"M": {...}}`. `deploy` pushes the marshalled item directly via
+`PutItemCommand` (`src/connectors/dynamodb.mjs`). `generate` still prints the same
+marshalled form to stdout for manual `aws dynamodb put-item` flows if needed.
 
-### `--connector-id` idempotency
+### Idempotent upsert
 
-Without `--connector-id`, `connectors generate` mints a fresh ID of the form
-`connector-<32-hex-chars>` on every run (`src/connectors/cli.mjs:62`), creating a distinct
-DynamoDB row each time because the hash key is `ConnectorId`. Passing
-`--connector-id <existing-id>` on every subsequent `generate` call causes `put-item` to
-overwrite the same row, updating all fields while keeping the key stable. The flag is
-accepted only by `generate`, not by `deploy`; to reuse an ID through the combined `deploy`
-command, run `connectors stage` and `connectors generate --connector-id <id>` separately.
+`connectors deploy` looks up an existing row by `ConnectorName` before writing. On a hit it
+reuses the existing `ConnectorId` and `CreatedAt`; on a miss it mints a fresh
+`connector-<32-hex-chars>` UUID. Re-running `deploy` therefore overwrites the same row and
+never creates a duplicate. Pass `--connector-id <id>` to force a specific ID (e.g. to
+migrate from a legacy row whose name changed).
+
+`connectors generate` alone does **not** dedupe — it prints an item with the ID supplied via
+`--connector-id` or a fresh UUID otherwise. Use `generate` only when driving a custom
+`put-item` flow.
 
 ---
 
@@ -309,13 +314,13 @@ with the corrected regex resolves the mismatch.
 or `aws dynamodb scan` on `SpatialDataManagement-ConnectorsTable` returns two rows with the
 same `ConnectorName` but different `ConnectorId` values.
 
-**Cause:** `connectors deploy` (or `connectors generate`) was run more than once without
-`--connector-id`, minting a fresh UUID each time and creating a distinct row per run.
-See `.claude/context/spda-connectors.md` → "Avoiding Duplicate Rows".
+**Cause:** Legacy rows from before `connectors deploy` learned to upsert by
+`ConnectorName`, or from running `connectors generate | put-item` manually without
+`--connector-id`. Current `deploy` runs reuse the oldest matching row and will not produce
+new duplicates.
 
-**Fix:** Identify and delete the stale row via the commands below. Pass
-`--connector-id <surviving-id>` on every subsequent `connectors generate` call to prevent
-recurrence.
+**Fix:** Identify and delete the stale rows via the commands below. `connectors deploy`
+will continue to reuse the surviving row on subsequent runs.
 
 ```bash
 aws dynamodb scan \

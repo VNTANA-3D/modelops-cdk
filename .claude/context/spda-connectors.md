@@ -14,13 +14,20 @@ this is the *control plane* you use to register pipelines with SDMA.
 ```bash
 ./index.mjs -c .env.spda connectors generate <profile>   # prints DynamoDB item to stdout
 ./index.mjs -c .env.spda connectors stage    <profile>   # uploads pipeline JSON to S3
-./index.mjs -c .env.spda connectors deploy   <profile>   # stage + generate
+./index.mjs -c .env.spda connectors deploy   <profile>   # stage + upsert into DynamoDB
 ./index.mjs -c .env.spda connectors assets-sync          # upload ./assets/ and merge public read policy
 ```
 
-`generate` accepts `--connector-id <id>` to reuse an existing
-`ConnectorId` — omit it to mint a fresh UUID (see "Avoiding duplicates"
-below).
+`deploy` is the one-shot: it stages the pipeline JSON, then scans the
+connectors table for a row whose `ConnectorName` matches the profile.
+On a hit it reuses that `ConnectorId` (preserving `CreatedAt` and
+`permittedConnectorIds` references on asset templates); on a miss it
+mints a fresh UUID. Use `--connector-id <id>` to force a specific ID.
+
+`generate` still accepts `--connector-id <id>` for the same reason but
+only prints the AttributeValue-marshalled item — it does **not** write
+to DynamoDB. Reach for it when you want to inspect the item or drive a
+custom `put-item` flow.
 
 ## Module Layout
 
@@ -37,6 +44,7 @@ Functional-core / imperative-shell split:
 | `src/connectors/cloudformation.mjs` | `fetchStackOutputs` via `@aws-sdk/client-cloudformation` | Shell |
 | `src/connectors/s3.mjs` | `uploadPipelineJson` via `@aws-sdk/client-s3` | Shell |
 | `src/connectors/s3-assets.mjs` | `syncAssets` (walks local tree, uploads, merges policy) | Shell |
+| `src/connectors/dynamodb.mjs` | `findConnectorByName` + `putConnectorItem` via `@aws-sdk/client-dynamodb` | Shell |
 | `src/connectors/cli.mjs` | Commander subcommands: `generate`/`stage`/`deploy`/`assets-sync` | Shell |
 | `src/connectors/index.mjs` | Subcommand registration | Shell |
 
@@ -49,47 +57,32 @@ rule in `resolveStackName()` — set `STACK_NAME` to the base name (e.g.
 
 ## DynamoDB AttributeValue Marshalling
 
-`connectors generate` outputs DynamoDB AttributeValue-marshalled JSON
-(e.g. `{"S": "..."}` / `{"N": "1"}` / `{"M": {...}}`). This lets the
-CLI-provided file drop straight into `aws dynamodb put-item` without
-any intermediate marshalling step:
-
-```bash
-./index.mjs -c .env.spda connectors deploy cad_zip > /tmp/cad_zip.json
-aws dynamodb put-item \
-  --table-name SpatialDataManagement-ConnectorsTable \
-  --item file:///tmp/cad_zip.json
-```
+`connectors generate` emits DynamoDB AttributeValue-marshalled JSON
+(e.g. `{"S": "..."}` / `{"N": "1"}` / `{"M": {...}}`). `deploy` uses
+the same marshaller internally and pushes via `PutItemCommand`, so no
+external `aws dynamodb put-item` call is needed.
 
 `buildConnector()` still returns a plain JS object so unit tests can
 assert shape directly. `marshallConnectorItem()` only wraps it at the
 boundary where it leaves the CLI process.
 
 The bash generator at `scripts/generate-spda-connector.sh` is
-**deprecated** — it emits plain JSON, so its output would crash
-`put-item` the same way. The Node CLI replaces it.
+**deprecated** — the Node CLI replaces it.
 
 ## Avoiding Duplicate Rows
 
-`connectors generate` without `--connector-id` mints a fresh UUID each
-run. `aws dynamodb put-item` treats each UUID as a distinct row, so
-running `deploy` twice leaves two ConnectorsTable rows with identical
-config and different IDs.
+`deploy` upserts by `ConnectorName`: it scans the table for a row with
+the profile's `ConnectorName`, reuses that `ConnectorId` (and original
+`CreatedAt`) on hit, and mints a fresh UUID on miss. Re-running is
+idempotent.
 
-Pick one strategy:
+If earlier misuse left two rows with the same name, `deploy` keeps the
+oldest and logs the orphan IDs to stderr so you can delete them:
 
-- **Update in place:** pass `--connector-id "$CID"` on every subsequent
-  run so `put-item` overwrites the same row.
-- **Recreate cleanly:** delete the old row before the new put, or
-  after noticing two exist:
-  ```bash
-  aws dynamodb scan --table-name SpatialDataManagement-ConnectorsTable \
-    --filter-expression "ConnectorName = :n" \
-    --expression-attribute-values '{":n":{"S":"<name>"}}' \
-    --projection-expression "ConnectorId, CreatedAt"
-  aws dynamodb delete-item --table-name SpatialDataManagement-ConnectorsTable \
-    --key '{"ConnectorId":{"S":"<stale-id>"}}'
-  ```
+```bash
+aws dynamodb delete-item --table-name SpatialDataManagement-ConnectorsTable \
+  --key '{"ConnectorId":{"S":"<stale-id>"}}'
+```
 
 The ConnectorId the SPDA UI fires is whichever one is listed in the
 target `AssetTemplate`'s `permittedConnectorIds` list. Orphan rows do
@@ -171,6 +164,11 @@ Scenario 5 for a runnable recipe that inline-generates a new
 | `SPDA_STAGING_BUCKET` | `stage`, `deploy`, `assets-sync` |
 | `SDMA_LIBRARY_ID` | `generate`, `deploy` |
 | `SDMA_TEMPLATE_BUCKET` | `generate`, `deploy` |
+| `SDMA_CONNECTORS_TABLE` | `deploy` — optional; defaults to `SpatialDataManagement-ConnectorsTable` |
 
 `assets-sync` explicitly opts into a narrower set (`AWS_REGION` +
 `SPDA_STAGING_BUCKET`) so asset publishing works in deploy-less setups.
+
+The caller running `deploy` needs `dynamodb:Scan` and `dynamodb:PutItem`
+on the connectors table in addition to the S3 and CFN permissions the
+other subcommands use.
