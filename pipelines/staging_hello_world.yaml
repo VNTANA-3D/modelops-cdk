@@ -1,0 +1,53 @@
+---
+name: Staging Hello World
+description: >
+  Tests the ECS bridge staging flow. Downloads the input file from the staging
+  bucket, copies it as the "output", and uploads it back to the staging output
+  prefix. Use this to verify the bridge wiring before testing with real assets.
+
+  The bridge injects these state variables automatically:
+    - stagingBucket
+    - stagingInputPrefix
+    - stagingOutputPrefix
+    - inputFilename
+state:
+  optimized: /home/workspace/optimized.glb
+tasks:
+  - name: Download Input from Staging
+    module: S3
+    props:
+      src: "{{ stagingInputPrefix }}/{{ inputFilename }}"
+      dest: "{{ inputFilename }}"
+      bucket: "{{ stagingBucket }}"
+      action: download
+    register: download
+
+  - name: Echo Download Success
+    module: Shell
+    props:
+      command: echo
+      args:
+        - "Downloaded {{ download.dest }} from staging — bridge wiring works!"
+
+  - module: MeshOptimizer
+    props:
+      src: "{{ download.dest }}"
+      dest: "{{ optimized }}"
+      config:
+        c: true
+        allow_draco_decode: true
+
+  - name: Echo Optimization Success
+    module: Shell
+    props:
+      command: echo
+      args:
+        - "Optimized file deployed to {{ optimized }}"
+
+  - name: Upload Output to Staging
+    module: S3
+    props:
+      src: "{{ optimized }}"
+      dest: "{{ stagingOutputPrefix }}/optimized_{{ inputFilename }}"
+      bucket: "{{ stagingBucket }}"
+      action: upload

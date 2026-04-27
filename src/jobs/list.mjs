@@ -1,5 +1,4 @@
 import { Command, Option } from "commander";
-import * as dotenv from "dotenv";
 import { Table } from "console-table-printer";
 import dayjs from "dayjs";
 
@@ -18,7 +17,7 @@ program
   .addOption(
     new Option("-b, --backend <BACKEND>", "Compute backend to use.")
       .env("COMPUTE_BACKEND")
-      .choices(["batch", "eks"])
+      .choices(["batch", "eks", "deadline", "spda"])
       .default("batch"),
   )
   .addOption(
@@ -30,28 +29,29 @@ program
     new Option("--eks-kubeconfig <PATH>", "Path to kubeconfig file.")
       .env("EKS_KUBECONFIG_PATH"),
   )
+  .addOption(
+    new Option("--deadline-farm-id <FARM_ID>", "Deadline Cloud farm ID.")
+      .env("DEADLINE_FARM_ID"),
+  )
+  .addOption(
+    new Option("--deadline-queue-id <QUEUE_ID>", "Deadline Cloud queue ID.")
+      .env("DEADLINE_QUEUE_ID"),
+  )
   .option(
     "-f, --from <TIME_AGO>",
     "Time from `x` amount of time ago (e.g. `1 day`.)",
     "12 hours ago",
   )
-  .addOption(
-    new Option("-c, --config <CONFIG>", "Path to the configuration file.")
-      .env("MODELOPS_CONFIG")
-      .default("./.env"),
-  )
   .action(async (options) => {
-    // Load configuration from .env file (provides defaults)
-    dotenv.config({ path: options.config });
+    const computeBackend = process.env.COMPUTE_BACKEND || options.backend;
+    const stackName = process.env.STACK_NAME || options.stackName;
 
-    // CLI arguments take precedence (Commander handles env fallback via .env())
-    const computeBackend = options.backend;
-    const stackName = options.stackName;
-
-    // Build backend config - CLI args already have env fallbacks via Commander
+    // Build backend config
     const backendConfig = {
-      eksNamespace: options.eksNamespace,
-      eksKubeconfigPath: options.eksKubeconfig || null,
+      eksNamespace: process.env.EKS_NAMESPACE || options.eksNamespace,
+      eksKubeconfigPath: process.env.EKS_KUBECONFIG_PATH || options.eksKubeconfig || null,
+      deadlineFarmId: process.env.DEADLINE_FARM_ID || options.deadlineFarmId || null,
+      deadlineQueueId: process.env.DEADLINE_QUEUE_ID || options.deadlineQueueId || null,
     };
 
     const backend = getBackend(computeBackend, backendConfig);
@@ -84,6 +84,7 @@ program
         "jobId",
         "jobName",
         "status",
+        "deadlineStatus",
         "createdAt",
         "stoppedAt",
         "startedAt",
@@ -102,6 +103,11 @@ program
         },
         {
           name: "status",
+          alignment: "center",
+        },
+        {
+          name: "deadlineStatus",
+          title: "deadline",
           alignment: "center",
         },
         {

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "fs";
 import * as cdk from "aws-cdk-lib";
 import type { StackProps } from "aws-cdk-lib";
 import { Construct } from "constructs";
-import { KubectlV30Layer } from "@aws-cdk/lambda-layer-kubectl-v30";
+import { KubectlV32Layer } from "@aws-cdk/lambda-layer-kubectl-v32";
 
 import type { ConfigPropsT } from "./config";
 import { PolicyDocument } from "./validators";
@@ -206,8 +206,8 @@ export class ModelopsEksStack extends cdk.Stack {
     const cluster = new cdk.aws_eks.Cluster(this, "EksCluster", {
       vpc,
       vpcSubnets,
-      version: cdk.aws_eks.KubernetesVersion.V1_30,
-      kubectlLayer: new KubectlV30Layer(this, "KubectlLayer"),
+      version: cdk.aws_eks.KubernetesVersion.V1_32,
+      kubectlLayer: new KubectlV32Layer(this, "KubectlLayer"),
       defaultCapacity: 0, // Karpenter will manage job nodes
       clusterName,
       outputClusterName: true,
@@ -225,6 +225,7 @@ export class ModelopsEksStack extends cdk.Stack {
     // Add bootstrap managed node group for Karpenter controller
     cluster.addNodegroupCapacity("BootstrapNodeGroup", {
       instanceTypes: [new cdk.aws_ec2.InstanceType("t3.small")],
+      amiType: cdk.aws_eks.NodegroupAmiType.AL2023_X86_64_STANDARD,
       minSize: 1,
       maxSize: 1,
       desiredSize: 1,

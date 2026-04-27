@@ -2,7 +2,6 @@ import { readFileSync } from "fs";
 import { dirname, resolve } from "path";
 import { Command, Option } from "commander";
 import * as YAML from "yaml";
-import * as dotenv from "dotenv";
 
 import { fileURLToPath } from "url";
 
@@ -56,7 +55,7 @@ program
   .addOption(
     new Option("-b, --backend <BACKEND>", "Compute backend to use.")
       .env("COMPUTE_BACKEND")
-      .choices(["batch", "eks"])
+      .choices(["batch", "eks", "deadline", "spda"])
       .default("batch"),
   )
   .addOption(
@@ -74,7 +73,7 @@ program
   .addOption(
     new Option("--tag <TAG>", "ECR image tag.")
       .env("UNSAFE_ECR_IMAGE_TAG")
-      .default("20251201.1"),
+      .default("20260417.1"),
   )
   .addOption(
     new Option("--job-cpu <CPU>", "Number of vCPUs for the job.")
@@ -109,6 +108,16 @@ program
       "EKS_KUBECONFIG_PATH",
     ),
   )
+  .addOption(
+    new Option("--deadline-farm-id <FARM_ID>", "Deadline Cloud farm ID.").env(
+      "DEADLINE_FARM_ID",
+    ),
+  )
+  .addOption(
+    new Option("--deadline-queue-id <QUEUE_ID>", "Deadline Cloud queue ID.").env(
+      "DEADLINE_QUEUE_ID",
+    ),
+  )
   .option(
     "--print",
     "Print the Pipeline to `stdout` before executing the pipeline.",
@@ -136,32 +145,25 @@ program
       .choices(["color", "json", "stdout"])
       .default("stdout"),
   )
-  .addOption(
-    new Option("-c, --config <CONFIG>", "Path to the configuration file.")
-      .env("MODELOPS_CONFIG")
-      .default("./.env"),
-  )
   .action(async (pipeline, state, options) => {
-    // Load configuration from .env file (provides defaults)
-    dotenv.config({ path: options.config });
+    const computeBackend = process.env.COMPUTE_BACKEND || options.backend;
+    const stackName = process.env.STACK_NAME || options.stackName;
 
-    // CLI arguments take precedence (Commander handles env fallback via .env())
-    const computeBackend = options.backend;
-    const stackName = options.stackName;
-
-    // Build backend config - CLI args already have env fallbacks via Commander
+    // Build backend config
     const backendConfig = {
       computeBackend,
       stackName,
-      image: options.image,
-      tag: options.tag,
-      region: options.region,
-      jobCpu: parseInt(options.jobCpu, 10),
-      jobMemory: parseInt(options.jobMemory, 10),
-      jobEphemeralStorage: parseInt(options.jobStorage, 10),
-      jobRetryAttempts: parseInt(options.jobRetries, 10),
-      eksNamespace: options.eksNamespace,
-      eksKubeconfigPath: options.eksKubeconfig || null,
+      image: process.env.UNSAFE_ECR_IMAGE || options.image,
+      tag: process.env.UNSAFE_ECR_IMAGE_TAG || options.tag,
+      region: process.env.AWS_REGION || options.region,
+      jobCpu: parseInt(process.env.JOB_CPU || options.jobCpu, 10),
+      jobMemory: parseInt(process.env.JOB_MEMORY || options.jobMemory, 10),
+      jobEphemeralStorage: parseInt(process.env.JOB_EPHEMERAL_STORAGE || options.jobStorage, 10),
+      jobRetryAttempts: parseInt(process.env.JOB_RETRY_ATTEMPTS || options.jobRetries, 10),
+      eksNamespace: process.env.EKS_NAMESPACE || options.eksNamespace,
+      eksKubeconfigPath: process.env.EKS_KUBECONFIG_PATH || options.eksKubeconfig || null,
+      deadlineFarmId: process.env.DEADLINE_FARM_ID || options.deadlineFarmId || null,
+      deadlineQueueId: process.env.DEADLINE_QUEUE_ID || options.deadlineQueueId || null,
     };
 
     // Get backend
@@ -221,21 +223,26 @@ program
       while (true) {
         const job = await backend.describeJob(jobId);
 
-        if (
-          job.status === "RUNNING" ||
-          job.status === "SUCCEEDED" ||
-          job.status === "FAILED"
-        ) {
+        if (job.status === "SUCCEEDED" || job.status === "FAILED") {
+          process.stderr.write("\r\x1b[K");
           process.stderr.write(
             `\n\nJob status: ${job.status}\n\nGetting logs...\n\n`,
           );
-          await sleep(5000);
+          await sleep(2000);
           break;
         }
 
-        process.stderr.write(".");
+        if (job.ecsTask) {
+          process.stderr.write(
+            `\rJob: ${job.status} | ECS: ${job.ecsTask.status}`,
+          );
+        } else {
+          process.stderr.write(
+            `\rJob: ${job.status} | Deadline: ${job.deadlineStatus || "..."}`,
+          );
+        }
 
-        await sleep(3000);
+        await sleep(5000);
       }
 
       process.stderr.write("\n");

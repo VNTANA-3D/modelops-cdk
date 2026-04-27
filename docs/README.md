@@ -2,6 +2,11 @@
 
 ModelOps is a task runner optimized to handle pipelines for the processing of 3D assets.
 
+## Install
+
+- [Install Quickstart](./install/quickstart.md) — linear walkthrough for registering the `cad_zip` connector into an existing SDMA deployment.
+- [Install Reference](./install/reference.md) — environment variables, SPDA stack outputs, profile anatomy, asset-template wiring, and troubleshooting for operators extending beyond `cad_zip`.
+
 ## Modules
 
 - [AssetConverter](./modules/AssetConverter.md)

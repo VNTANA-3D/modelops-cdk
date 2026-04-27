@@ -34,8 +34,8 @@ program
   .addOption(
     new Option(
       "--compute_backend <string>",
-      "Compute backend: batch, eks, or both",
-    ).choices(["batch", "eks", "both"]),
+      "Compute backend: batch, eks, or deadline",
+    ).choices(["batch", "eks", "deadline", "spda"]),
   )
   .option("--use_default_vpc <string>", "Flag to use the `default` VPC.")
   .option("--vpc_id <string>", "Custom VPC Id (overrides `USE_DEFAULT_VPC`.)")
@@ -70,6 +70,9 @@ program
     "--unsafe_ecr_image_tag <string>",
     "[UNSAFE] Vntana ECR Marketplace image tag",
   )
+  // SPDA-specific options
+  .option("--spda_s3_bucket_arns <string>", "Comma-separated S3 bucket ARNs for SPDA asset access.")
+  .option("--spda_role_arn <string>", "ARN of the SPDA role that assumes the proxy role.")
   // EKS-specific options
   .option("--eks_cluster_name <string>", "EKS cluster name.")
   .option("--eks_namespace <string>", "EKS namespace for jobs.")
@@ -128,8 +131,10 @@ program
     const computeBackend = options.compute_backend || envs.COMPUTE_BACKEND || process.env.COMPUTE_BACKEND;
     const stackName = options.stack_name || envs.STACK_NAME || process.env.STACK_NAME || "ModelopsHandler";
 
-    if (computeBackend === "both") {
-      deployArgs.push("--all");
+    if (computeBackend === "spda") {
+      deployArgs.push(stackName + "Spda");
+    } else if (computeBackend === "deadline") {
+      deployArgs.push(stackName + "Deadline");
     } else if (computeBackend === "eks") {
       deployArgs.push(stackName + "Eks");
     } else {

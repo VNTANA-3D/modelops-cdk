@@ -9,4 +9,11 @@ cdk.out
 
 # Custom
 .env
+.env.*
 .envrc
+.local
+.claude/*
+!.claude/context
+!.claude/context/**
+graeme/*
+.DS_Store

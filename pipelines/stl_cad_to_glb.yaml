@@ -1,0 +1,156 @@
+---
+name: STL/STEP → GLB (SPDA)
+description: >
+  Converts an STL or STEP CAD asset into a web-viewable GLB plus USDZ, FBX,
+  OBJ (zip), a PNG thumbnail, and a self-contained HTML viewer. Driven by
+  the SPDA Deadline-to-ECS bridge, which injects stagingBucket,
+  stagingInputPrefix, stagingOutputPrefix, and inputFilename before the
+  container starts. See `.claude/context/spda-ecs-bridge.md`.
+state:
+  workspace: /home/workspace
+  # Fixed stem — extensions differ from input, job-scoped staging prefix avoids collisions.
+  outputStem: optimized
+tasks:
+  - name: Download input from staging
+    module: S3
+    props:
+      action: download
+      bucket: "{{ stagingBucket }}"
+      src: "{{ stagingInputPrefix }}/{{ inputFilename }}"
+      dest: "{{ workspace }}/{{ inputFilename }}"
+    register: download
+
+  - name: Convert CAD to GLB
+    module: AssetConverter
+    props:
+      src: "{{ download.dest }}"
+      dest: "{{ workspace }}/converted.glb"
+      name: "{{ inputFilename }}"
+    register: converted
+
+  - name: Optimize
+    module: MeshOptimizer
+    props:
+      src: "{{ converted.dest }}"
+      dest: "{{ workspace }}/{{ outputStem }}.glb"
+      config:
+        dont_export_tangents: true
+        dont_export_flat_normals: true
+        remove_morph_animations: true
+        reset_scaling: true
+        ignore_parallel_geometry: true
+        pot_textures: true
+        target_tex_density: 3000
+        skip_normal_baking: true
+        allow_anti_aligned_polygons: true
+        skip_doublesided_from_visibility: true
+        skip_degen_poly_normal_fixing: true
+        ignore_polygon_intersections: true
+        skip_degen_fixing: true
+        skip_inner_edge_welding: 1
+        skip_ao_baking: true
+        skip_tex_opt: false
+        use_ktx: false
+        max_tex_size: 2048
+        max_baking_resolution: 2048
+        skip_texel_density: false
+        lossless_tex_opt: false
+        tex_opt_compression: 70
+        norm_opt_compression: 70
+        file_size_limit: 0
+        force_file_size_limit: false
+        c3: true
+        remove_obstructed_geometry: true
+        force_poly_count: false
+        tris: 200000
+        bake_small_features: true
+        transform_op: 1
+        skip_geometry_ops_material_regex: NODEC-.*
+        remove_geometry_material_regex: DELETE-.*
+        output_fbx: true
+        fbx_pbr: true
+        fbx_pbr_input: true
+        reset_center: [center, center, center]
+        rotation: [0, 0, 0]
+        draco_encode: false
+        skip_scene_validation: false
+        hoops_bin_path: /usr/local/hoops/linux64/
+        output_usdz: true
+        output_obj: true
+    register: optimized
+
+  - name: Thumbnail
+    module: ScreenshotGenerator
+    throw: false
+    props:
+      src: "{{ optimized.dest }}"
+      dest: "{{ workspace }}/{{ outputStem }}.png"
+      timeout: 600000
+      args:
+        - --verbose
+        - --poster
+        - --background transparent
+    register: thumbnail
+
+  - name: Viewer HTML
+    module: GlbHtmlEmbed
+    throw: false
+    props:
+      src: "{{ optimized.dest }}"
+      dest: "{{ workspace }}/{{ outputStem }}.html"
+      inline: false
+      version: latest
+      cdn: jsdelivr
+      config:
+        autoRotate: true
+    register: viewer
+
+  - name: Upload GLB
+    module: S3
+    props:
+      action: upload
+      bucket: "{{ stagingBucket }}"
+      src: "{{ optimized.dest }}"
+      dest: "{{ stagingOutputPrefix }}/{{ outputStem }}.glb"
+
+  - name: Upload USDZ
+    module: S3
+    props:
+      action: upload
+      bucket: "{{ stagingBucket }}"
+      src: "{{ optimized.usdzDest }}"
+      dest: "{{ stagingOutputPrefix }}/{{ outputStem }}.usdz"
+
+  - name: Upload FBX
+    module: S3
+    props:
+      action: upload
+      bucket: "{{ stagingBucket }}"
+      src: "{{ optimized.fbxDest }}"
+      dest: "{{ stagingOutputPrefix }}/{{ outputStem }}.fbx"
+
+  - name: Upload OBJ
+    module: S3
+    props:
+      action: upload
+      bucket: "{{ stagingBucket }}"
+      src: "{{ optimized.objDest }}"
+      dest: "{{ stagingOutputPrefix }}/{{ outputStem }}.zip"
+
+  - name: Upload PNG
+    module: S3
+    throw: false
+    props:
+      action: upload
+      bucket: "{{ stagingBucket }}"
+      src: "{{ thumbnail.dest }}"
+      dest: "{{ stagingOutputPrefix }}/{{ outputStem }}.png"
+
+  - name: Upload HTML
+    module: S3
+    throw: false
+    props:
+      action: upload
+      bucket: "{{ stagingBucket }}"
+      src: "{{ viewer.dest }}"
+      dest: "{{ stagingOutputPrefix }}/{{ outputStem }}.html"

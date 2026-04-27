@@ -11,17 +11,17 @@ export const ConfigProps = z.object({
   region: z.string().default("us-east-1").describe("AWS Region"),
   // Compute Backend
   computeBackend: z
-    .enum(["batch", "eks", "both"])
+    .enum(["batch", "eks", "deadline", "spda"])
     .optional()
     .default("batch")
-    .describe("Compute backend: batch (AWS Batch/Fargate), eks (EKS), or both"),
+    .describe("Compute backend: batch (AWS Batch/Fargate), eks (EKS), or deadline (AWS Deadline Cloud)"),
   // ECR
   image: z
     .string()
     .default(
       "709825985650.dkr.ecr.us-east-1.amazonaws.com/vntana/vntana-v98543",
     ),
-  tag: z.string().default("20251203.1"),
+  tag: z.string().default("20260417.1"),
   // Flags
   useDefaultVpc: z
     .boolean()
@@ -156,6 +156,104 @@ export const ConfigProps = z.object({
     .optional()
     .default("private")
     .describe("Subnet type for EKS nodes: private, public, or both"),
+  // Deadline Cloud-specific options
+  deadlineFarmId: z
+    .string()
+    .optional()
+    .nullable()
+    .default(null)
+    .transform((val) => (val === "" ? null : val))
+    .describe("Existing Deadline Cloud farm ID; creates new if absent"),
+  deadlineFarmName: z
+    .string()
+    .optional()
+    .nullable()
+    .default(null)
+    .transform((val) => (val === "" ? null : val))
+    .describe("Name for new Deadline Cloud farm"),
+  deadlineQueueId: z
+    .string()
+    .optional()
+    .nullable()
+    .default(null)
+    .transform((val) => (val === "" ? null : val))
+    .describe("Existing Deadline Cloud queue ID; creates new if absent"),
+  deadlineFleetId: z
+    .string()
+    .optional()
+    .nullable()
+    .default(null)
+    .transform((val) => (val === "" ? null : val))
+    .describe("Existing Deadline Cloud fleet ID; creates new if absent"),
+  deadlineFleetMin: z
+    .number()
+    .optional()
+    .default(0)
+    .describe("Min workers for Deadline Cloud fleet auto-scaling"),
+  deadlineFleetMax: z
+    .number()
+    .optional()
+    .default(10)
+    .describe("Max workers for Deadline Cloud fleet auto-scaling"),
+  // SPDA-specific options
+  spdaS3BucketArns: z
+    .array(z.string())
+    .optional()
+    .nullable()
+    .default(null)
+    .describe("S3 bucket ARNs for SPDA asset access"),
+  spdaRoleArn: z
+    .string()
+    .optional()
+    .nullable()
+    .default(null)
+    .transform((val) => (val === "" ? null : val))
+    .describe("ARN of the SPDA role that will assume the proxy role"),
+  spdaStagingBucket: z
+    .string()
+    .optional()
+    .nullable()
+    .default(null)
+    .transform((val) => (val === "" ? null : val))
+    .describe("S3 bucket for staging inputs/outputs between Deadline workers and ECS containers"),
+}).superRefine((data, ctx) => {
+  if (data.computeBackend === "spda") {
+    if (!data.deadlineFarmId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "DEADLINE_FARM_ID is required when COMPUTE_BACKEND=spda",
+        path: ["deadlineFarmId"],
+      });
+    }
+    if (!data.deadlineFleetId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "DEADLINE_FLEET_ID is required when COMPUTE_BACKEND=spda (references the existing SPDA fleet)",
+        path: ["deadlineFleetId"],
+      });
+    }
+    if (!data.spdaS3BucketArns || data.spdaS3BucketArns.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "SPDA_S3_BUCKET_ARNS is required when COMPUTE_BACKEND=spda",
+        path: ["spdaS3BucketArns"],
+      });
+    }
+    if (!data.spdaStagingBucket) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "SPDA_STAGING_BUCKET is required when COMPUTE_BACKEND=spda",
+        path: ["spdaStagingBucket"],
+      });
+    }
+    if (!data.vpcId && !data.useDefaultVpc) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "VPC_ID or USE_DEFAULT_VPC is required when COMPUTE_BACKEND=spda",
+        path: ["vpcId"],
+      });
+    }
+  }
 });
 
 export type ConfigPropsT = z.infer<typeof ConfigProps>;
@@ -203,7 +301,7 @@ export function getConfig(customDotEnvPath: string = "") {
     jobEphemeralStorage: process.env.JOB_EPHEMERAL_STORAGE
       ? parseInt(process.env.JOB_EPHEMERAL_STORAGE, 10)
       : undefined,
-    jobobRetryAttempts: process.env.ECS_JOB_RETRY_ATTEMPTS
+    jobRetryAttempts: process.env.ECS_JOB_RETRY_ATTEMPTS
       ? parseInt(process.env.ECS_JOB_RETRY_ATTEMPTS, 10)
       : undefined,
     jobPolicyFile: process.env.JOB_POLICY_FILE,
@@ -218,6 +316,23 @@ export function getConfig(customDotEnvPath: string = "") {
     eksVpcCidr: process.env.EKS_VPC_CIDR,
     eksKubeconfigPath: process.env.EKS_KUBECONFIG_PATH,
     eksSubnetType: process.env.EKS_SUBNET_TYPE,
+    /// Deadline Cloud
+    deadlineFarmId: process.env.DEADLINE_FARM_ID,
+    deadlineFarmName: process.env.DEADLINE_FARM_NAME,
+    deadlineQueueId: process.env.DEADLINE_QUEUE_ID,
+    deadlineFleetId: process.env.DEADLINE_FLEET_ID,
+    deadlineFleetMin: process.env.DEADLINE_FLEET_MIN
+      ? parseInt(process.env.DEADLINE_FLEET_MIN, 10)
+      : undefined,
+    deadlineFleetMax: process.env.DEADLINE_FLEET_MAX
+      ? parseInt(process.env.DEADLINE_FLEET_MAX, 10)
+      : undefined,
+    /// SPDA
+    spdaS3BucketArns: process.env.SPDA_S3_BUCKET_ARNS
+      ? process.env.SPDA_S3_BUCKET_ARNS.split(",")
+      : undefined,
+    spdaRoleArn: process.env.SPDA_ROLE_ARN,
+    spdaStagingBucket: process.env.SPDA_STAGING_BUCKET,
   });
 }
 

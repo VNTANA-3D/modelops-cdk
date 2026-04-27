@@ -1,7 +1,7 @@
 import { Command, Option } from "commander";
-import * as dotenv from "dotenv";
 
 import { getBackend } from "./backends/index.mjs";
+import { formatJobDescription } from "./backends/deadline.mjs";
 
 export const program = new Command();
 
@@ -27,7 +27,7 @@ program
   .addOption(
     new Option("-b, --backend <BACKEND>", "Compute backend to use.")
       .env("COMPUTE_BACKEND")
-      .choices(["batch", "eks"])
+      .choices(["batch", "eks", "deadline", "spda"])
       .default("batch"),
   )
   .addOption(
@@ -40,21 +40,25 @@ program
       .env("EKS_KUBECONFIG_PATH"),
   )
   .addOption(
-    new Option("-c, --config <CONFIG>", "Path to the configuration file.")
-      .env("MODELOPS_CONFIG")
-      .default("./.env"),
+    new Option("--deadline-farm-id <FARM_ID>", "Deadline Cloud farm ID.")
+      .env("DEADLINE_FARM_ID"),
+  )
+  .addOption(
+    new Option("--deadline-queue-id <QUEUE_ID>", "Deadline Cloud queue ID.")
+      .env("DEADLINE_QUEUE_ID"),
+  )
+  .addOption(
+    new Option("--json", "Output raw JSON instead of human-readable format."),
   )
   .action(async (jobId, options) => {
-    // Load configuration from .env file (provides defaults)
-    dotenv.config({ path: options.config });
+    const computeBackend = process.env.COMPUTE_BACKEND || options.backend;
 
-    // CLI arguments take precedence (Commander handles env fallback via .env())
-    const computeBackend = options.backend;
-
-    // Build backend config - CLI args already have env fallbacks via Commander
+    // Build backend config
     const backendConfig = {
-      eksNamespace: options.eksNamespace,
-      eksKubeconfigPath: options.eksKubeconfig || null,
+      eksNamespace: process.env.EKS_NAMESPACE || options.eksNamespace,
+      eksKubeconfigPath: process.env.EKS_KUBECONFIG_PATH || options.eksKubeconfig || null,
+      deadlineFarmId: process.env.DEADLINE_FARM_ID || options.deadlineFarmId || null,
+      deadlineQueueId: process.env.DEADLINE_QUEUE_ID || options.deadlineQueueId || null,
     };
 
     const backend = getBackend(computeBackend, backendConfig);
@@ -67,5 +71,9 @@ program
       process.exit(1);
     }
 
-    console.log(JSON.stringify(job, null, 2));
+    if (options.json) {
+      console.log(JSON.stringify(job, null, 2));
+    } else {
+      console.log(formatJobDescription(job));
+    }
   });

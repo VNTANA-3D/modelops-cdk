@@ -5,6 +5,8 @@ import * as cdk from "aws-cdk-lib";
 
 import { ModelopsOnAwsStack } from "../lib/modelops-handler";
 import { ModelopsEksStack } from "../lib/modelops-eks-stack";
+import { ModelopsDeadlineStack } from "../lib/modelops-deadline-stack";
+import { ModelopsSpdaStack } from "../lib/modelops-spda-stack";
 import { getConfig } from "../lib/config";
 
 const config = getConfig(process.env.MODELOPS_CONFIG);
@@ -16,13 +18,14 @@ const env = {
   region: config.region,
 };
 
-// Support "batch", "eks", or "both" for compute backend
-if (config.computeBackend === "both") {
-  new ModelopsOnAwsStack(app, config.stackName, {
+// Support "batch", "eks", or "deadline" for compute backend
+if (config.computeBackend === "spda") {
+  new ModelopsSpdaStack(app, config.stackName + "Spda", {
     env,
     config,
   });
-  new ModelopsEksStack(app, config.stackName + "Eks", {
+} else if (config.computeBackend === "deadline") {
+  new ModelopsDeadlineStack(app, config.stackName + "Deadline", {
     env,
     config,
   });

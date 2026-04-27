@@ -6,15 +6,25 @@ CDK Project to deploy VNTANA ModelOps in AWS.
 
 This project showcases how to install the VNTANA ModelOps Handler in your own AWS infrastructure to process your 3D assets. It includes a fully automated method for deploying infrastructure to run optimization jobs using either **AWS Batch/Fargate** or **Amazon EKS** (Elastic Kubernetes Service). Additionally, it provides numerous settings to customize the deployment to your needs.
 
+## Installing VNTANA connectors into SDMA
+
+Operators running an existing SDMA deployment who want to register a VNTANA
+connector (for example, the `cad_zip` connector that converts `.zip` CAD
+uploads to `.glb`) follow the install guides under `docs/install/`.
+
+- [Install Quickstart](./docs/install/quickstart.md) — linear walkthrough from a cloned repo to a working `cad_zip` connector processing a real upload.
+- [Install Reference](./docs/install/reference.md) — reference for operators extending beyond the default `cad_zip` connector (environment variables, stack outputs, profile anatomy, asset-template wiring, troubleshooting).
+
 ## Compute Backends
 
 The project supports three compute backend configurations:
 
-| Backend | Description |
-| ------- | ----------- |
-| `batch` | AWS Batch with Fargate (default). Serverless, pay-per-use, simpler setup. |
-| `eks`   | Amazon EKS with Karpenter autoscaling. Kubernetes-native, scale-to-zero, more control. |
-| `both`  | Deploy both stacks simultaneously for hybrid workloads. |
+| Backend    | Description |
+| ---------- | ----------- |
+| `batch`    | AWS Batch with Fargate (default). Serverless, pay-per-use, simpler setup. |
+| `eks`      | Amazon EKS with Karpenter autoscaling. Kubernetes-native, scale-to-zero, more control. |
+| `deadline` | AWS Deadline Cloud. Service-managed fleet, auto-scaling, OpenJD job templates. |
+| `spda`     | SPDA integration. Reuses an existing SPDA Farm, creates isolated Queue/Fleet for ModelOps. |
 
 ### AWS Batch/Fargate (Default)
 
@@ -29,6 +39,21 @@ The project supports three compute backend configurations:
 - **Scale-to-zero**: Karpenter automatically provisions/deprovisions nodes
 - **Flexible**: Custom node types, spot instances, advanced scheduling
 - **Best for**: High-volume workloads, K8s integration, advanced requirements
+
+### AWS Deadline Cloud
+
+- **Service-managed**: AWS manages the fleet infrastructure
+- **Auto-scaling**: Configurable min/max worker count with scale-to-zero
+- **OpenJD**: Uses Open Job Description templates for job submission
+- **Best for**: Render farms, large-scale 3D processing, Deadline Cloud integration
+
+### SPDA (Spatial Data Management on AWS)
+
+- **Farm reuse**: Connects to an existing SPDA Deadline Cloud Farm
+- **Isolated resources**: Creates its own Queue, Fleet, and IAM roles for ModelOps jobs
+- **Proxy role**: Creates an IAM role that SPDA's Connector Lambda assumes to submit jobs
+- **No S3 bucket**: Uses SPDA-managed bucket ARNs — no new bucket created
+- **Best for**: Organizations running SPDA that want to add ModelOps 3D processing to their pipeline
 
 A `NodeJS`-based CLI is also included to simplify the process of interacting with the project, exposing commands to build the infrastructure, and run and monitor custom jobs.
 
@@ -89,7 +114,7 @@ This table lists all the available options:
 | `STACK_NAME`              | `VntanaModelOpsHandler` | Stack name.                                                              |
 | `AWS_ACCOUNT_ID`          | `null`                  | AWS Account ID.                                                          |
 | `AWS_REGION`              | `us-east-1`             | AWS Region.                                                              |
-| `COMPUTE_BACKEND`         | `batch`                 | Compute backend: `batch`, `eks`, or `both`.                              |
+| `COMPUTE_BACKEND`         | `batch`                 | Compute backend: `batch`, `eks`, `deadline`, or `spda`.                  |
 
 ### VPC & Network Configuration
 
@@ -131,6 +156,29 @@ This table lists all the available options:
 | `EKS_VPC_CIDR`            | `10.0.0.0/16`           | CIDR block for new EKS VPC.                                              |
 | `EKS_SUBNET_TYPE`         | `private`               | Subnet type for EKS: `private`, `public`, or `both`.                     |
 
+### Deadline Cloud-Specific Configuration
+
+| Name                      | Default                 | Description                                                              |
+| ------------------------- | ----------------------- | ------------------------------------------------------------------------ |
+| `DEADLINE_FARM_ID`        | `null`                  | Existing Deadline Cloud farm ID (creates new if absent).                 |
+| `DEADLINE_FARM_NAME`      | `null`                  | Name for new farm (auto-generated from stack name if absent).            |
+| `DEADLINE_QUEUE_ID`       | `null`                  | Existing Deadline Cloud queue ID (creates new if absent).                |
+| `DEADLINE_FLEET_ID`       | `null`                  | Existing Deadline Cloud fleet ID (creates new if absent).                |
+| `DEADLINE_FLEET_MIN`      | `0`                     | Minimum workers for fleet auto-scaling.                                  |
+| `DEADLINE_FLEET_MAX`      | `10`                    | Maximum workers for fleet auto-scaling.                                  |
+
+### SPDA-Specific Configuration
+
+| Name                      | Default                 | Description                                                              |
+| ------------------------- | ----------------------- | ------------------------------------------------------------------------ |
+| `DEADLINE_FARM_ID`        | `null`                  | Existing SPDA Deadline Cloud farm ID (**required**).                     |
+| `SPDA_S3_BUCKET_ARNS`     | `null`                  | Comma-separated S3 bucket ARNs for SPDA asset access (**required**).    |
+| `SPDA_ROLE_ARN`           | `null`                  | ARN of the SPDA role that assumes the proxy role (defaults to account root). |
+| `DEADLINE_FLEET_MIN`      | `0`                     | Minimum workers for fleet auto-scaling.                                  |
+| `DEADLINE_FLEET_MAX`      | `10`                    | Maximum workers for fleet auto-scaling.                                  |
+
+> **Note:** `AWS_ACCOUNT_ID` is required when using `COMPUTE_BACKEND=deadline` or `COMPUTE_BACKEND=spda`.
+
 > You can also override these variables through environment variables or as options when calling the `./index.mjs deploy` command.
 
 Once you update your `.env` file with all the required configuration you are ready to deploy. If this is the first time you'll be using the AWS CDK on your account, you are going to need to bootstrap it. This can be easily done through the `deploy` command by passing the `--bootstrap` flag.
@@ -160,12 +208,34 @@ Once you update your `.env` file with all the required configuration you are rea
   --eks_subnet_ids "subnet-abc123,subnet-def456,subnet-ghi789"
 ```
 
-**Deploy both stacks with separate subnets:**
+**Deploy Deadline Cloud stack:**
 
 ```bash
-./index.mjs deploy --compute_backend both \
-  --batch_subnet_ids "subnet-111,subnet-222" \
-  --eks_subnet_ids "subnet-333,subnet-444,subnet-555"
+./index.mjs deploy --compute_backend deadline
+```
+
+**Deploy Deadline Cloud with an existing farm:**
+
+```bash
+./index.mjs deploy --compute_backend deadline \
+  --deadline_farm_id "farm-abc123"
+```
+
+**Deploy SPDA backend:**
+
+```bash
+./index.mjs deploy --compute_backend spda \
+  --deadline_farm_id "farm-cee1b7e4af5549be8116bfa7e51f134d" \
+  --spda_s3_bucket_arns "arn:aws:s3:::spatialdatamanagement-ass-assetencrypteds3encrypte-b40cky4znngy"
+```
+
+**Deploy SPDA with a custom proxy role trust:**
+
+```bash
+./index.mjs deploy --compute_backend spda \
+  --deadline_farm_id "farm-cee1b7e4af5549be8116bfa7e51f134d" \
+  --spda_s3_bucket_arns "arn:aws:s3:::spatialdatamanagement-ass-assetencrypteds3encrypte-b40cky4znngy" \
+  --spda_role_arn "arn:aws:iam::263408322201:role/SpdaConnectorLambdaRole"
 ```
 
 **Deploy EKS with a new VPC:**
@@ -254,7 +324,7 @@ kubectl get namespaces
 
 The EKS stack deploys the following components:
 
-- **EKS Cluster**: Kubernetes control plane (v1.30)
+- **EKS Cluster**: Kubernetes control plane (v1.32)
 - **Bootstrap Node Group**: A small `t3.small` node for system components (Karpenter)
 - **Karpenter**: Cluster autoscaler that provisions nodes on-demand and scales to zero
 - **NodePool & EC2NodeClass**: Karpenter configuration for job nodes
@@ -262,6 +332,68 @@ The EKS stack deploys the following components:
 - **Namespace**: Dedicated `modelops` namespace for jobs
 
 When a job is submitted, Karpenter automatically provisions an appropriately-sized node, runs the job, and deprovisions the node when idle.
+
+## Deadline Cloud Architecture
+
+The Deadline Cloud stack deploys the following resources (each can reference an existing resource via its ID, or be created automatically):
+
+- **Farm**: Top-level Deadline Cloud container for queues and fleets
+- **Queue**: Holds submitted jobs, linked to S3 bucket for job attachments
+- **Fleet**: Service-managed EC2 fleet with configurable auto-scaling (min 0, max 10 by default)
+- **Queue-Fleet Association**: Wires the queue to the fleet
+- **Queue Role**: IAM role for S3 job attachment access
+- **Fleet Role**: IAM role for CloudWatch logging, S3 access, and ECR image pull
+- **Worker Configuration Script**: Boot script that installs Docker, authenticates to ECR, and pulls the handler image
+
+Workers use the `job-user` Deadline Cloud user. Jobs are submitted as OpenJD templates (`deadline/job-template.yaml`) that pipe pipeline JSON through the same container interface used by all backends.
+
+## SPDA Backend Architecture
+
+The SPDA backend integrates ModelOps with an existing [Spatial Data Management on AWS](https://aws.amazon.com/solutions/implementations/spatial-data-management-on-aws/) deployment. Instead of creating its own Farm, it reuses SPDA's Farm and creates isolated resources for ModelOps job routing.
+
+### Resources Created
+
+- **Queue**: Dedicated ModelOps queue on the existing SPDA Farm (no `jobAttachmentSettings` — assets are accessed via S3 role permissions)
+- **Fleet**: Service-managed EC2 fleet with Docker worker boot script, same as the Deadline backend
+- **Queue-Fleet Association**: Wires the queue to the fleet
+- **Queue Role**: IAM role with S3 access to SPDA bucket ARNs
+- **Fleet Role**: IAM role for CloudWatch logging, S3 access, ECR image pull, and Marketplace metering
+- **Proxy Role**: Fixed-name IAM role (`SpatialDataManagementContentDerivation-ModelOps`) that SPDA's Connector Lambda assumes to submit Deadline jobs to the ModelOps queue
+- **Log Group**: CloudWatch log group for job output
+
+### How It Works
+
+1. SPDA's Connector Lambda assumes the proxy role via `sts:AssumeRole`
+2. Using the proxy role, it submits a Deadline Cloud job to the ModelOps queue
+3. The fleet picks up the job, provisions an EC2 worker, and runs the ModelOps handler container
+4. The worker accesses assets in SPDA's S3 bucket via the fleet role's S3 permissions
+
+### Proxy Role Trust
+
+By default, the proxy role trusts the account root principal. To restrict it to a specific SPDA role, set `SPDA_ROLE_ARN`:
+
+```bash
+SPDA_ROLE_ARN=arn:aws:iam::263408322201:role/SpdaConnectorLambdaRole
+```
+
+> **Note:** The proxy role name `SpatialDataManagementContentDerivation-ModelOps` is fixed per account. Only one SPDA backend deployment is supported per AWS account.
+
+### Using Existing Deadline Cloud Resources
+
+You can reference existing resources instead of creating new ones:
+
+```bash
+# Use an existing farm and queue, create a new fleet
+COMPUTE_BACKEND=deadline
+DEADLINE_FARM_ID=farm-abc123
+DEADLINE_QUEUE_ID=queue-def456
+
+# Use all existing resources
+COMPUTE_BACKEND=deadline
+DEADLINE_FARM_ID=farm-abc123
+DEADLINE_QUEUE_ID=queue-def456
+DEADLINE_FLEET_ID=fleet-ghi789
+```
 
 ### Use the `cdk` CLI directly
 
@@ -320,7 +452,7 @@ You can also change the `logger` configuration to JSON if you prefer this format
 
 ### Running Jobs on Different Backends
 
-By default, the CLI uses the Batch backend. To run jobs on EKS, use the `--backend` option:
+By default, the CLI uses the Batch backend. To run jobs on a different backend, use the `--backend` option:
 
 ```bash
 # Run on AWS Batch (default)
@@ -328,14 +460,78 @@ By default, the CLI uses the Batch backend. To run jobs on EKS, use the `--backe
 
 # Run on EKS
 ./index.mjs jobs run hello_world --backend eks
+
+# Run on Deadline Cloud
+./index.mjs jobs run hello_world --backend deadline \
+  --deadline-farm-id "farm-abc123" \
+  --deadline-queue-id "queue-def456"
 ```
 
-You can also set the backend via environment variable:
+You can also set the backend and Deadline IDs via environment variables:
 
 ```bash
-export COMPUTE_BACKEND=eks
+export COMPUTE_BACKEND=deadline
+export DEADLINE_FARM_ID=farm-abc123
+export DEADLINE_QUEUE_ID=queue-def456
 ./index.mjs jobs run hello_world
 ```
+
+All job commands (`list`, `describe`, `logs`) support the same `--backend` and `--deadline-*` options:
+
+```bash
+./index.mjs jobs list --backend deadline \
+  --deadline-farm-id "farm-abc123" \
+  --deadline-queue-id "queue-def456"
+
+./index.mjs jobs describe "$JOB_ID" --backend deadline \
+  --deadline-farm-id "farm-abc123" \
+  --deadline-queue-id "queue-def456"
+
+./index.mjs jobs logs "$JOB_ID" --backend deadline \
+  --deadline-farm-id "farm-abc123" \
+  --deadline-queue-id "queue-def456"
+```
+
+## Connectors
+
+The `connectors` command builds SDMA ConnectorsTable items for use with the SPDA backend. Each connector maps a file extension to a ModelOps pipeline, with a single `fileExtensionFilter` per item (one trigger per extension) and `PipelineJsonS3Key` always populated.
+
+```bash
+./index.mjs -c .env.spda connectors generate <profile>   # prints DynamoDB item to stdout
+./index.mjs -c .env.spda connectors stage <profile>      # uploads pipeline JSON to S3
+./index.mjs -c .env.spda connectors deploy <profile>     # stage + generate (full workflow)
+./index.mjs -c .env.spda connectors assets-sync          # upload ./assets/ to s3://<bucket>/assets/* and grant public read via bucket policy
+```
+
+### Available Profiles
+
+| Profile | Input extensions | Outputs | Pipeline |
+|---------|-----------------|---------|----------|
+| `cad`     | `.stl`, `.stp` | GLB, USDZ, FBX, OBJ (zip), PNG thumbnail, HTML viewer | `pipelines/stl_cad_to_glb.yaml`     |
+| `cad_zip` | `.zip`         | GLB, USDZ, FBX, OBJ (zip), PNG thumbnail, HTML viewer | `pipelines/zip_cad_to_glb.yaml`     |
+
+The `cad` profile accepts `.stl` and `.stp` CAD files and produces a full set of web-ready delivery formats. Two DynamoDB items are generated — one per input extension — because SDMA enforces a single-extension rule on `fileExtensionFilter`.
+
+The `cad_zip` profile targets `.zip`-packaged industrial CAD assemblies, producing the same six delivery formats via a tuned optimizer and an HDR-lit thumbnail. Because `.zip` is a single extension, only one DynamoDB item is generated.
+
+### Required Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `STACK_NAME` | Stack name used to derive the Deadline queue. |
+| `AWS_REGION` | AWS region where resources live. |
+| `DEADLINE_FARM_ID` | SPDA Deadline Cloud farm ID. |
+| `SPDA_STAGING_BUCKET` | S3 bucket where pipeline JSON is staged. |
+| `SDMA_LIBRARY_ID` | SDMA library identifier the connector registers itself under. |
+| `SDMA_TEMPLATE_BUCKET` | S3 bucket that hosts the Deadline job-bundle templates. |
+
+### Pipeline Files
+
+Pipeline definitions live at `pipelines/<profile.pipeline>.yaml`. See [`pipelines/README.md`](pipelines/README.md) for the pipeline format and the state variables the SPDA bridge injects at runtime.
+
+### Deprecation Note
+
+`scripts/generate-spda-connector.sh` is deprecated in favor of this CLI. The CLI corrects two issues present in the old script: triggers are now always single-extension (one DynamoDB item per extension), and `PipelineJsonS3Key` is always populated.
 
 ## Run a Job on EKS with kubectl
 
@@ -354,7 +550,7 @@ spec:
       serviceAccountName: modelops-job-sa
       containers:
         - name: handler
-          image: 709825985650.dkr.ecr.us-east-1.amazonaws.com/vntana/vntana-v98543:20250926.1
+          image: 709825985650.dkr.ecr.us-east-1.amazonaws.com/vntana/vntana-v98543:20260417.1
           command:
             - /bin/bash
             - -c
@@ -716,4 +912,68 @@ You can run the `other` Pipeline Definition using the CLI as shown:
   prefix=assets \
   name=tt_remote_wow_flexi_drafter \
   bucket="$S3_BUCKET"
+```
+
+## SPDA (Spatial Data Management) Deployment
+
+The project includes a modified SPDA CloudFormation template (`spda-modified.yaml`) configured to use existing VPC infrastructure instead of creating a new VPC.
+
+### Prerequisites
+
+- Existing VPC with private subnets that have NAT Gateway egress
+- Subnets must be in OpenSearch Serverless supported AZs (us-east-1a, us-east-1c, or us-east-1d for us-east-1 region)
+- Route53 hosted zone (optional, for custom domain)
+
+### Deployment
+
+```bash
+aws cloudformation deploy \
+  --template-file spda-modified.yaml \
+  --stack-name SpatialDataManagement \
+  --parameter-overrides \
+    ExistingVpcId=<your-vpc-id> \
+    ExistingPrivateSubnet1Id=<subnet-in-supported-az> \
+    ExistingPrivateSubnet2Id=<subnet-in-different-supported-az> \
+    DeploymentMode=Dev \
+    PortalFullyQualifiedDomainName=<your-domain> \
+    PortalRoute53HostedZoneId=<your-hosted-zone-id> \
+  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+  --profile <your-profile> \
+  --region us-east-1
+```
+
+### Parameters
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `ExistingVpcId` | Yes | VPC ID to deploy into |
+| `ExistingPrivateSubnet1Id` | Yes | First private subnet (OpenSearch Serverless supported AZ) |
+| `ExistingPrivateSubnet2Id` | Yes | Second private subnet (different supported AZ) |
+| `DeploymentMode` | No | Dev or Prod (default: Dev) |
+| `PortalFullyQualifiedDomainName` | No | Custom domain for portal |
+| `PortalRoute53HostedZoneId` | No | Route53 hosted zone for custom domain |
+| `LogBucketRetentionDays` | No | Log retention in days (default: 90) |
+| `ExistingDeadlineFarmId` | No | Deadline Cloud Farm ID |
+| `ExistingDeadlineQueueId` | No | Deadline Cloud Queue ID |
+
+### OpenSearch Serverless AZ Compatibility
+
+OpenSearch Serverless VPC endpoints are only available in specific availability zones. Before deploying, verify your subnets are in supported AZs:
+
+```bash
+aws ec2 describe-vpc-endpoint-services \
+  --filters "Name=service-name,Values=*aoss*" \
+  --query 'ServiceDetails[*].AvailabilityZones' \
+  --region <your-region>
+```
+
+### Cleanup
+
+To delete the SPDA stack:
+
+```bash
+aws cloudformation delete-stack \
+  --stack-name SpatialDataManagement \
+  --profile <your-profile> \
+  --region us-east-1
 ```
